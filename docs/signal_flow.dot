@@ -1,0 +1,39 @@
+// Echolivity H&H v0.2.1 — DSP signal flow (per channel; MONO mode feeds both tracks with L+R/2)
+// Render: dot -Tsvg docs/signal_flow.dot -o docs/signal_flow.svg
+digraph HH {
+  rankdir=LR;
+  graph [fontname="Helvetica", fontsize=11, bgcolor="white", pad=0.3, nodesep=0.35, ranksep=0.45,
+         label="Echolivity H&H v0.2.1 — signal flow (gen~ codebox dsp/hh_core.genexpr)\n[M107] = from HH Service Manual M107 / drawing C/AC20000; [mod] = modern addition; [fit] = fitted to M107 spec",
+         labelloc=t];
+  node  [shape=box, style="rounded,filled", fillcolor="#f4f4f4", color="#555555", fontname="Helvetica", fontsize=10];
+  edge  [color="#444444", fontname="Helvetica", fontsize=9];
+
+  in   [label="Input L/R\nfixnan", shape=cds, fillcolor="#e8eef9"];
+  vol  [label="Volume\n(channel amp, ≤ +6 dB [M107])\nrail clamp ±17.8"];
+  dtr  [label="Dry Treble\n±16 dB @10 kHz [M107/fit]"];
+  sum  [label="Record node\n+ Repeat  × (1 − HOLD) [mod]\nDRIVE gain [mod]"];
+  rhp  [label="Record coupling HP\n19.3 Hz [M107]"];
+  lim  [label="Q3 record limiter\n80 mV, 10:1, rel 86 ms [M107]\n(half-wave detector after pre-emph.)", fillcolor="#fff1d6"];
+  pre  [label="IC9 pre-emphasis\n+8.1 dB, 6.05/15.4 kHz [M107]"];
+  sat  [label="Tape saturation\ntanh, Sat ±12 dB, DRIVE [approx]"];
+  rlp  [label="DC block + record AA LPF\nmin(18 kHz, 0.42·v·fs)"];
+  tape [label="TAPE (Data 800 000 × 2)\nrecord head writes every crossed cell\nv = 1 × STOP ramp × (1 + wow/flutter)", shape=cylinder, fillcolor="#e9f5e9"];
+  head [label="SLIDING REPLAY HEAD [M107]\nr = p − d, d ← slider/SYNC/TAP\n2-pole glide, head-speed limit 3×\nHermite / box read (|rate|>1)", fillcolor="#e9f5e9"];
+  pb   [label="Splice dip · velocity gain\nTape HF loss LP2 7.78 kHz·v [fit]\nPlayback EQ HP 48.7 Hz [M107]\ncouplings 2× 15.4 Hz [M107]\n+ replay noise"];
+  rep  [label="REPEAT (pre-tone) [M107]\nRepeat HP/LP/Res [mod]\n× Repeat × loop guard", fillcolor="#fde8e8"];
+  tone [label="Echo Bass ±10 dB @100 Hz\nEcho Treble ±14 dB @10 kHz\n(Baxandall, outside loop) [M107/fit]"];
+  ef   [label="Echo HP/LP [mod]\nDC block"];
+  mix  [label="Dry × Dry + Echo × Echo Volume\n× Output"];
+  prot [label="OUTPUT PROTECTION [v0.2.1]\nlinked peak limiter, 0 latency\n+ soft clip to Ceiling\n→ GR, OVER", fillcolor="#fff1d6"];
+  out  [label="Output L/R", shape=cds, fillcolor="#e8eef9"];
+
+  in -> vol;
+  vol -> dtr -> mix;
+  vol -> sum -> rhp -> lim -> pre -> sat -> rlp -> tape;
+  tape -> head [label="read"];
+  head -> pb;
+  pb -> rep;
+  rep -> sum [label="feedback", constraint=false, color="#b03030"];
+  pb -> tone -> ef -> mix;
+  mix -> prot -> out;
+}

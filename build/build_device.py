@@ -1,5 +1,5 @@
 """
-Builds the H&H Max for Live device source from dsp/hh_core.genexpr.
+Builds the H&H Max for Live device source from dsp/hh_core.genexpr (v0.2.1).
 
 Outputs
   devices/Echolivity_HH.maxpat  — editable Max patcher (open in Max 9, or paste
@@ -75,8 +75,8 @@ def pval(longname, short, ptype, lo, hi, init, unit=1, enum=None, expo=1.0, unit
 # ---- gen~ ------------------------------------------------------------------
 gen_boxes = [
     {"box": {"id": "g-code", "maxclass": "codebox", "code": CODE, "fontface": 0,
-             "fontname": "<Monospaced>", "fontsize": 11.0, "numinlets": 2, "numoutlets": 6,
-             "outlettype": [""] * 6, "patching_rect": [20, 60, 900, 700]}},
+             "fontname": "<Monospaced>", "fontsize": 11.0, "numinlets": 2, "numoutlets": 8,
+             "outlettype": [""] * 8, "patching_rect": [20, 60, 900, 700]}},
     {"box": {"id": "g-in1", "maxclass": "newobj", "text": "in 1", "numinlets": 0, "numoutlets": 1,
              "outlettype": [""], "patching_rect": [20, 20, 30, 22]}},
     {"box": {"id": "g-in2", "maxclass": "newobj", "text": "in 2", "numinlets": 0, "numoutlets": 1,
@@ -84,18 +84,19 @@ gen_boxes = [
 ]
 gen_lines = [{"patchline": {"source": ["g-in1", 0], "destination": ["g-code", 0]}},
              {"patchline": {"source": ["g-in2", 0], "destination": ["g-code", 1]}}]
-for k in range(6):
+for k in range(8):
     gen_boxes.append({"box": {"id": f"g-out{k+1}", "maxclass": "newobj", "text": f"out {k+1}",
                               "numinlets": 1, "numoutlets": 0,
-                              "patching_rect": [20 + 170 * k, 780, 40, 22]}})
+                              "patching_rect": [20 + 120 * k, 780, 40, 22]}})
     gen_lines.append({"patchline": {"source": ["g-code", k], "destination": [f"g-out{k+1}", 0]}})
 gen_patcher = {"fileversion": 1, "appversion": APPV, "classnamespace": "dsp.gen",
                "rect": [50, 50, 960, 840], "boxes": gen_boxes, "lines": gen_lines}
 
 plugin = obj("plugin~ 2", [20, 20, 80, 22], nin=2, nout=2, otype=["signal", "signal"])
-gen = box("newobj", [20, 420, 460, 22], text="gen~", nin=2, nout=6, otype=["signal"] * 6,
+gen = box("newobj", [20, 420, 460, 22], text="gen~", nin=2, nout=8, otype=["signal"] * 8,
           patcher=gen_patcher)
-plugout = obj("plugout~ 2", [20, 500, 80, 22], nin=2, nout=0, otype=[])
+# v0.2.1: plugout~ 2 has 2 signal outlets in real devices (Ableton maxdevtools reference files)
+plugout = obj("plugout~ 2", [20, 500, 80, 22], nin=2, nout=2, otype=["signal", "signal"])
 line(plugin, 0, gen, 0)
 line(plugin, 1, gen, 1)
 line(gen, 0, plugout, 0)
@@ -181,7 +182,9 @@ tab("tap_type", "Tap Type", "TapType", ["STR", "DOT", "TRI"], 0, [136, 102], [90
 tapbtn = box("live.text", [px[0], 300, 44, 20], pres=[310, 22, 66, 20], nin=1, nout=2,
              otype=["", ""], parameter_enable=1, varname="tap_button", mode=0, text="TAP",
              saved_attribute_attributes=pval("Tap", "Tap", 2, 0, 1, 0, 9, enum=["off", "on"]))
-sel = obj("sel 1", [px[0], 340, 40, 22], nin=2, nout=2, otype=["bang", ""])
+# v0.2.1: live.text in Button mode outputs a BANG on click (and on a 0->1 parameter
+# transition, e.g. a mapped MIDI note), not a 1 — so trigger the counter with [t b].
+sel = obj("t b", [px[0], 340, 30, 22], nin=1, nout=1, otype=["bang"])
 cnt = obj("counter 1 1000000", [px[0], 360, 100, 22], nin=5, nout=4, otype=["int", "", "", "int"])
 line(tapbtn, 0, sel, 0)
 line(sel, 0, cnt, 0)
@@ -194,10 +197,16 @@ px[0] += 118
 for outlet, label, pres in ((2, "ms", [76, 122]), (3, "BPM", [160, 122])):
     sn = obj("snapshot~ 40", [20 + 120 * outlet, 460, 80, 22], nin=2, nout=1, otype=["float"])
     line(gen, outlet, sn, 0)
-    fl = box("flonum", [20 + 120 * outlet, 490, 60, 22], pres=pres + [60, 18], nin=1, nout=2,
+    fl = box("flonum", [20 + 120 * outlet, 490, 56, 22], pres=pres + [56, 18], nin=1, nout=2,
              otype=["", "bang"], format=6, numdecimalplaces=1, fontsize=11.0)
     line(sn, 0, fl, 0)
-    comment(label, [pres[0] + 62, pres[1] + 1, 30, 16])
+    comment(label, [pres[0] + 57, pres[1] + 1, 24, 16])
+
+# mouse state for momentary-pad release (UI thread only)
+mst_poll = msg("poll", [1400, 20, 40, 22])
+mst = obj("mousestate", [1400, 50, 80, 22], nin=1, nout=5, otype=["int", "int", "int", "int", "int"])
+mst_chg = obj("change", [1400, 80, 50, 22], nin=2, nout=3, otype=["", "int", "int"])
+mst_up = obj("sel 0", [1400, 110, 40, 22], nin=2, nout=2, otype=["bang", ""])
 
 # host tempo + time signature (event-driven via live.observer; never sets tempo)
 td = obj("live.thisdevice", [700, 20, 90, 22], nin=1, nout=3, otype=["bang", "int", "int"])
@@ -205,6 +214,10 @@ tbb = obj("t b b", [700, 50, 40, 22], nin=1, nout=2, otype=["bang", "bang"])
 mpath = msg("path live_set", [700, 80, 90, 22])
 lpath = obj("live.path", [700, 110, 70, 22], nin=1, nout=3, otype=["", "", ""])
 line(td, 0, tbb, 0)
+line(td, 0, mst_poll, 0)          # start mouse polling once the device is loaded
+line(mst_poll, 0, mst, 0)
+line(mst, 0, mst_chg, 0)
+line(mst_chg, 0, mst_up, 0)
 line(tbb, 0, mpath, 0)
 line(mpath, 0, lpath, 0)
 for i, (prop, dest) in enumerate((("tempo", "bpm"), ("signature_numerator", None),
@@ -249,18 +262,44 @@ X = 620
 comment("PERFORM", [X, 4, 60, 16])
 
 
+# Momentary pads (v0.2.1). live.text Button mode only bangs, so each pad is a
+# Toggle-mode live.text that is released on mouse-up. The release is armed only
+# if the mouse button was down when the pad turned on, so a pad switched on by a
+# MIDI CC (127) stays on until the CC sends 0 — a held CC footswitch is a true
+# momentary. A mapped MIDI NOTE toggles (Live does not pass note-off to a
+# toggle parameter) and therefore behaves as a latch. The pad and its LATCH are
+# OR-ed into the engine.
+
+
 def perf(name, label, y):
-    mom = toggle_text(f"{name}_mom", f"{label} Momentary", label, label, [X, y], [52, 22], mode=0, wire=False)
+    mom = toggle_text(f"{name}_mom", f"{label} Momentary", label, label, [X, y], [52, 22], mode=1, wire=False)
     lat = toggle_text(f"{name}_latch", f"{label} Latch", f"{label}L", "LATCH", [X + 54, y], [40, 22], mode=1, wire=False)
-    pk = obj("pak 0 0", [px[0], 340, 50, 22], nin=2, nout=1)
-    orx = obj("expr $f1 || $f2", [px[0], 360, 90, 22], nin=2, nout=1)
-    line(mom, 0, pk, 0)
+    x0 = px[0]
+    tii = obj("t i i", [x0, 330, 40, 22], nin=1, nout=2, otype=["int", "int"])
+    on = obj("sel 1", [x0, 350, 40, 22], nin=2, nout=2, otype=["bang", ""])
+    mdown = obj("i", [x0 + 50, 350, 30, 22], nin=2, nout=1, otype=["int"])      # mouse state at press
+    gt = obj("gate 1", [x0, 370, 40, 22], nin=2, nout=1, otype=[""])           # armed?
+    zero = msg("0", [x0 + 50, 390, 30, 22])
+    disarm = msg("0", [x0 + 90, 390, 30, 22])
+    line(mom, 0, tii, 0)
+    line(tii, 0, on, 0)                 # left (fires second): arm on press
+    line(on, 0, mdown, 0)
+    line(mdown, 0, gt, 0)               # gate control = mouse button state at press
+    line(mst_chg, 0, mdown, 1)          # keep latest mouse button state
+    line(mst_up, 0, gt, 1)              # mouse released -> through gate if armed
+    line(gt, 0, zero, 0)
+    line(gt, 0, disarm, 0)
+    line(zero, 0, mom, 0)               # release the pad (outputs 0)
+    line(disarm, 0, gt, 0)
+    pk = obj("pak 0 0", [x0, 410, 50, 22], nin=2, nout=1)
+    orx = obj("expr $f1 || $f2", [x0, 430, 90, 22], nin=2, nout=1)
+    line(tii, 1, pk, 0)                 # right (fires first): value to engine
     line(lat, 0, pk, 1)
     line(pk, 0, orx, 0)
-    pr_ = obj(f"prepend {name}", [px[0], 380, 100, 22])
+    pr_ = obj(f"prepend {name}", [x0, 450, 100, 22])
     line(orx, 0, pr_, 0)
     line(pr_, 0, gen, 0)
-    px[0] += 118
+    px[0] += 130
 
 
 perf("hold", "HOLD", 22)
@@ -291,6 +330,28 @@ for ch in (0, 1):
             nin=1, nout=1, otype=["list"])
     line(gen, ch, m, 0)
 
+# -- output protection (v0.2.1, P0)
+toggle_text("protect", "Output Protection", "Protect", "PROTECT", [X, 126], [56, 16], init=1)
+dial("ceiling_db", "Output Ceiling", "Ceiling", -12, 0, -0.3, [X + 48, 74], unit=4)
+gr_sn = obj("snapshot~ 40", [900, 460, 80, 22], nin=2, nout=1, otype=["float"])
+gr_db = obj("atodb", [900, 485, 50, 22], nin=1, nout=1, otype=[""])
+gr_neg = obj("* -1.", [900, 505, 40, 22], nin=2, nout=1, otype=["float"])
+gr_fl = box("flonum", [900, 530, 50, 22], pres=[X, 146, 36, 16], nin=1, nout=2,
+            otype=["", "bang"], format=6, numdecimalplaces=1, fontsize=10.0)
+line(gen, 6, gr_sn, 0)
+line(gr_sn, 0, gr_db, 0)
+line(gr_db, 0, gr_neg, 0)
+line(gr_neg, 0, gr_fl, 0)
+comment("GR dB", [X + 36, 147, 34, 14], size=8.0)
+ov_pk = obj("peakamp~ 150", [1000, 460, 80, 22], nin=2, nout=1, otype=["float"])
+ov_cmp = obj("> 0.5", [1000, 485, 40, 22], nin=2, nout=1, otype=["int"])
+ov_led = box("led", [1000, 510, 18, 18], pres=[X + 70, 147, 12, 12], nin=1, nout=1, otype=["int"],
+             oncolor=[1.0, 0.2, 0.1, 1.0])
+line(gen, 7, ov_pk, 0)
+line(ov_pk, 0, ov_cmp, 0)
+line(ov_cmp, 0, ov_led, 0)
+comment("OVER", [X + 82, 146, 30, 14], size=8.0)
+
 # -- machine / engine settings
 X = 1050
 comment("ENGINE", [X, 4, 60, 16])
@@ -305,14 +366,33 @@ toggle_text("limiter", "Record Limiter", "Limiter", "LIMIT", [X + 96, 42], [44, 
 tab("loop_type", "Tape Loop", "Loop", ["SHORT", "LONG"], 1, [X + 96, 62], [52, 16])
 dial("splice", "Splice", "Splice", 0, 1, 0.25, [X + 96, 82])
 
+# parameter registry, as real devices carry it ({box id: [longname, shortname, 0]})
+registry = {}
+for b in boxes:
+    v = b["box"].get("saved_attribute_attributes", {}).get("valueof")
+    if b["box"].get("parameter_enable") and v:
+        registry[b["box"]["id"]] = [v["parameter_longname"], v["parameter_shortname"], 0]
+registry["inherited_shortname"] = 1
+DEVW = 1200.0
+
 patcher = {
     "patcher": {
         "fileversion": 1, "appversion": APPV, "classnamespace": "box",
         "rect": [60, 80, 1500, 820], "openinpresentation": 1,
         "default_fontsize": 10.0, "default_fontface": 0, "default_fontname": "Arial",
-        "gridonopen": 1, "gridsize": [8.0, 8.0], "devicewidth": 1200.0,
-        "description": "Echolivity H&H Echo Unit — tape echo (Phase 1 core v0.2, M107-based, prototype)",
-        "boxes": boxes, "lines": lines, "dependency_cache": [], "autosave": 0,
+        "openrect": [0.0, 0.0, DEVW, 169.0],
+        "gridonopen": 1, "gridsize": [8.0, 8.0], "devicewidth": DEVW,
+        "description": "Echolivity H&H Echo Unit — tape echo, v0.2.1 (M107-based)",
+        "parameters": registry,
+        "boxes": boxes, "lines": lines, "dependency_cache": [],
+        "latency": 0, "is_mpe": 0, "minimum_live_version": "", "minimum_max_version": "",
+        "platform_compatibility": 0,
+        "project": {"version": 1, "creationdate": 3590052493, "modificationdate": 3590052493,
+                    "viewrect": [0.0, 0.0, 300.0, 500.0], "autoorganize": 1, "hideprojectwindow": 1,
+                    "showdependencies": 1, "autolocalize": 0, "contents": {"patchers": {}}, "layout": {},
+                    "searchpath": {}, "detailsvisible": 0, "amxdtype": 1633771873, "readonly": 0,
+                    "devpathtype": 0, "devpath": ".", "sortmode": 0, "viewmode": 0, "includepackages": 0},
+        "autosave": 0,
     }
 }
 

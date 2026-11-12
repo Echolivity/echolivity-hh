@@ -1,5 +1,5 @@
 """
-Echolivity H&H — Python/Numba reference model of the tape engine (v0.2).
+Echolivity H&H — Python/Numba reference model of the tape engine (v0.2.1).
 
 Statement-for-statement mirror of dsp/hh_core.genexpr. Change both together.
 
@@ -33,7 +33,7 @@ PARAMS = [
     ("fb_res", 0.0), ("echo_hp_hz", 10.0), ("echo_lp_hz", 20000.0),
     ("stereo", 0), ("head_spacing_ms", 300.0), ("bar_beats", 4.0),
     ("head_slew", 3.0), ("dry_treble_db", 0.0), ("limiter", 1), ("loop_type", 1),
-    ("splice", 0.25),
+    ("splice", 0.25), ("protect", 1), ("ceiling_db", -0.3),
 ]
 IDX = {name: i for i, (name, _) in enumerate(PARAMS)}
 NP = len(PARAMS)
@@ -68,6 +68,29 @@ def default_params(n):
     return P
 
 
+DENORM = 2.2250738585072014e-308
+
+
+@njit(cache=True)
+def _fixdenorm(x):
+    # mirrors gen~ fixdenorm(): subnormal -> 0
+    return 0.0 if abs(x) < DENORM else x
+
+
+@njit(cache=True)
+def _fixnan(x):
+    return 0.0 if x != x else x
+
+
+@njit(cache=True)
+def _softclip(x, k, c):
+    ax = abs(x)
+    if ax > k:
+        sg = 1.0 if x >= 0.0 else -1.0
+        return sg * (k + (c - k) * np.tanh((ax - k) / (c - k)))
+    return x
+
+
 @njit(cache=True)
 def _svf(st, i, x, fc, q, sr):
     fc = min(max(fc, 5.0), 0.49 * sr)
@@ -79,15 +102,15 @@ def _svf(st, i, x, fc, q, sr):
     v3 = x - st[i, 1]
     v1 = a1 * st[i, 0] + a2 * v3
     v2 = st[i, 1] + a2 * st[i, 0] + a3 * v3
-    st[i, 0] = 2.0 * v1 - st[i, 0]
-    st[i, 1] = 2.0 * v2 - st[i, 1]
+    st[i, 0] = _fixdenorm(2.0 * v1 - st[i, 0])
+    st[i, 1] = _fixdenorm(2.0 * v2 - st[i, 1])
     return v2, v1, x - k * v1 - v2
 
 
 @njit(cache=True)
 def _lp1(st, i, x, fc, sr):
     a = 1.0 - np.exp(-2.0 * np.pi * min(fc, 0.49 * sr) / sr)
-    st[i, 0] += a * (x - st[i, 0])
+    st[i, 0] = _fixdenorm(st[i, 0] + a * (x - st[i, 0]))
     return st[i, 0]
 
 
@@ -104,7 +127,7 @@ def _zp1(st, i, x, kdc, fz, fp, fw, sr):
     K = 2.0 * np.pi * fw / np.tan(np.pi * fw / sr)
     cz = K / (2.0 * np.pi * fz)
     cp = K / (2.0 * np.pi * fp)
-    y = (kdc * ((1.0 + cz) * x + (1.0 - cz) * st[i, 0]) - (1.0 - cp) * st[i, 1]) / (1.0 + cp)
+    y = _fixdenorm((kdc * ((1.0 + cz) * x + (1.0 - cz) * st[i, 0]) - (1.0 - cp) * st[i, 1]) / (1.0 + cp))
     st[i, 0] = x
     st[i, 1] = y
     return y
@@ -129,7 +152,7 @@ def _highshelf(st, i, x, gdb, fc, fw, sr):
 @njit(cache=True)
 def _dcblock(st, i, x, sr):
     R = 1.0 - 2.0 * np.pi * 10.0 / sr
-    y = x - st[i, 0] + R * st[i, 1]
+    y = _fixdenorm(x - st[i, 0] + R * st[i, 1])
     st[i, 0] = x
     st[i, 1] = y
     return y
@@ -151,11 +174,19 @@ def _hermite(tape, ch, r, N):
 
 
 @njit(cache=True)
-def _integ_at(tape, integ, ch, r, N):
-    i = np.floor(r)
-    f = r - i
-    i0 = int(i) % N
-    return integ[i0, ch] + f * tape[(i0 + 1) % N, ch]
+def _box(tape, ch, lo, hi, N):
+    # mean of the zero-order-hold track over [lo, hi]; cell j spans (j-1, j]
+    ilo = np.floor(lo)
+    flo = lo - ilo
+    ihi = np.floor(hi)
+    fhi = hi - ihi
+    bs = 0.0
+    j = ilo + 1.0
+    while j <= ihi:
+        bs += tape[int(j) % N, ch]
+        j += 1.0
+    span = max(hi - lo, 0.000001)
+    return (bs + fhi * tape[int(ihi + 1.0) % N, ch] - flo * tape[int(ilo + 1.0) % N, ch]) / span
 
 
 @njit(cache=True)
@@ -169,7 +200,6 @@ def process(xl, xr, P, sr, seed=1):
     n = xl.shape[0]
     N = N_TAPE
     tape = np.zeros((N, 2))
-    integ = np.zeros((N, 2))
     outl = np.zeros(n)
     outr = np.zeros(n)
     d_ms_out = np.zeros(n)
@@ -177,6 +207,11 @@ def process(xl, xr, P, sr, seed=1):
     tapbpm_out = np.zeros(n)
     readrate_out = np.zeros(n)
     limgr_out = np.zeros(n)   # record-limiter gain (1 = no reduction)
+    pgain_out = np.zeros(n)   # output-protection gain
+    over_out = np.zeros(n)    # pre-protection over flag
+    pg_hold = 1.0
+    pg_s = 1.0
+    ph_cnt = 0.0
 
     st = np.zeros((64, 2))
     np.random.seed(seed)
@@ -361,12 +396,14 @@ def process(xl, xr, P, sr, seed=1):
         a_att = 1.0 - np.exp(-1.0 / (LIM_ATT * sr))
         a_rel = 1.0 - np.exp(-1.0 / (LIM_REL * sr))
 
+        xlt = _fixnan(xl[t])
+        xrt = _fixnan(xr[t])
         if Pn[37] < 0.5:
-            xin0 = 0.5 * (xl[t] + xr[t])
+            xin0 = 0.5 * (xlt + xrt)
             xin1 = xin0
         else:
-            xin0 = xl[t]
-            xin1 = xr[t]
+            xin0 = xlt
+            xin1 = xrt
 
         guard = 1.0
         if env > 1.5:
@@ -383,7 +420,7 @@ def process(xl, xr, P, sr, seed=1):
             # --- replay head + playback preamp
             y = _hermite(tape, ch, r, N)
             if w_box > 0.0:
-                ybox = (_integ_at(tape, integ, ch, r, N) - _integ_at(tape, integ, ch, r_a, N)) / rho
+                ybox = _box(tape, ch, min(r_a, r), max(r_a, r), N)
                 y = y + w_box * (ybox - y)
             y = y * gp
             l1, b1, h1 = _svf(st, o + 0, y, fc_tape, 0.707, sr)        # tape HF loss (fitted)
@@ -406,7 +443,7 @@ def process(xl, xr, P, sr, seed=1):
             # (feedback topology); modelled feed-forward with the same static
             # curve: detector = pre-emphasised, half-wave (D2) peak envelope.
             det = max(_zp1(st, o + 17, u, 1.0, PRE_FZ, PRE_FP, 11000.0, sr), 0.0)
-            lenv[ch] += (a_att if det > lenv[ch] else a_rel) * (det - lenv[ch])
+            lenv[ch] = _fixdenorm(lenv[ch] + (a_att if det > lenv[ch] else a_rel) * (det - lenv[ch]))
             g_l = 1.0
             if Pn[42] > 0.5 and lenv[ch] > LIM_THR:
                 g_l = (lenv[ch] / LIM_THR) ** LIM_EXP
@@ -425,14 +462,14 @@ def process(xl, xr, P, sr, seed=1):
             e2l, e2b, e2h = _svf(st, o + 14, e1h, Pn[36], 0.707, sr)
             ech[ch] = _dcblock(st, o + 15, e2l, sr)
             # --- dry path: dry Treble (IC7)
-            xd = min(max((xl[t] if ch == 0 else xr[t]) * in_g, -17.8), 17.8)   # dry stays stereo
+            xd = min(max((xlt if ch == 0 else xrt) * in_g, -17.8), 17.8)   # dry stays stereo
             dryo[ch] = _highshelf(st, o + 16, xd, Pn[41] * (20.0 / 16.0), DTREB_FC, 10000.0, sr)
 
         if Pn[37] < 0.5:
             rec[1] = rec[0]
             ech[1] = ech[0]
 
-        env += ((1.0 - np.exp(-1.0 / (0.001 * sr))) if fbmax > env else (1.0 - np.exp(-1.0 / (0.2 * sr)))) * (fbmax - env)
+        env = _fixdenorm(env + ((1.0 - np.exp(-1.0 / (0.001 * sr))) if fbmax > env else (1.0 - np.exp(-1.0 / (0.2 * sr)))) * (fbmax - env))
 
         # ---------------- RECORD HEAD WRITE ----------------
         if v_eff > 0.0:
@@ -440,11 +477,8 @@ def process(xl, xr, P, sr, seed=1):
             while k0 <= p_new:
                 f = (k0 - p) / v_eff
                 ki = int(k0) % N
-                km = (ki - 1) % N
                 tape[ki, 0] = rec_prev[0] + f * (rec[0] - rec_prev[0])
                 tape[ki, 1] = rec_prev[1] + f * (rec[1] - rec_prev[1])
-                integ[ki, 0] = integ[km, 0] + tape[ki, 0]
-                integ[ki, 1] = integ[km, 1] + tape[ki, 1]
                 k0 += 1.0
         rec_prev[0] = rec[0]
         rec_prev[1] = rec[1]
@@ -454,11 +488,40 @@ def process(xl, xr, P, sr, seed=1):
             r_prev -= N
 
         og = 10.0 ** (Pn[3] / 20.0)
-        outl[t] = (dryo[0] * Pn[1] + ech[0] * Pn[2]) * og
-        outr[t] = (dryo[1] * Pn[1] + ech[1] * Pn[2]) * og
+        o1 = _fixnan((dryo[0] * Pn[1] + ech[0] * Pn[2]) * og)
+        o2 = _fixnan((dryo[1] * Pn[1] + ech[1] * Pn[2]) * og)
+        # ---------------- OUTPUT PROTECTION (after dry/wet sum) ----------
+        c_lin = 10.0 ** (Pn[46] / 20.0)
+        thr = c_lin * 0.944061
+        pk = max(abs(o1), abs(o2))
+        over_out[t] = 1.0 if pk > thr else 0.0
+        pg = 1.0
+        if Pn[45] > 0.5:
+            greq = thr / pk if pk > thr else 1.0
+            if greq < pg_hold:
+                pg_hold = greq
+                ph_cnt = 0.010 * sr
+            elif ph_cnt > 0.0:
+                ph_cnt -= 1.0
+            else:
+                pg_hold = pg_hold + (1.0 - np.exp(-1.0 / (0.150 * sr))) * (1.0 - pg_hold)
+            if pg_hold < pg_s:
+                pg_s = pg_s + (1.0 - np.exp(-1.0 / (0.0005 * sr))) * (pg_hold - pg_s)
+            else:
+                pg_s = pg_hold
+            pg = pg_s
+            o1 = _softclip(o1 * pg, thr, c_lin)
+            o2 = _softclip(o2 * pg, thr, c_lin)
+        else:
+            pg_hold = 1.0
+            pg_s = 1.0
+            ph_cnt = 0.0
+        pgain_out[t] = pg
+        outl[t] = o1
+        outr[t] = o2
         d_ms_out[t] = (d / max(v_eff, 1e-9)) / sr * 1000.0
         v_out[t] = v_eff
         tapbpm_out[t] = tap_bpm
         limgr_out[t] = lg[0]
 
-    return outl, outr, d_ms_out, v_out, tapbpm_out, readrate_out, limgr_out
+    return outl, outr, d_ms_out, v_out, tapbpm_out, readrate_out, limgr_out, pgain_out, over_out

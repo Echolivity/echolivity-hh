@@ -1,42 +1,57 @@
-# Echolivity Classic Echo Collection — H&H Echo Unit (Phase 1 core v0.2, prototype)
+# Echolivity Classic Echo Collection — H&H Echo Unit v0.2.1
 
-## What's here
-| Path | Contents |
+v0.2.1 is a stabilisation release of the H&H tape echo. It's a Max for Live audio effect modelled on the HH Electronic Echo Unit, with a sliding replay head and 12 ips tape, based on Service Manual M107.
+
+> **Release state: NOT RELEASE-READY — build-ready, awaiting Max 9 / Live 12 validation.**
+> This package was built and verified without access to Max or Live. Read `RELEASE_STATUS.md` before use.
+
+## Contents
+| Path | What |
 |---|---|
-| `devices/Echolivity_HH.maxpat` | Editable Max patcher for the device (gen~ embedded, 46 Live parameters) |
-| `devices/Echolivity_HH.amxd` | The same patcher in an .amxd container (unverified; see below) |
-| `dsp/hh_core.genexpr` | The tape engine (gen~ codebox source) |
-| `reference/tape_engine.py` | Python/Numba mirror of the engine, used for offline measurement |
-| `tests/run_tests.py` | Reproducible tests → `tests/TEST_REPORT_reference.md` |
-| `tests/make_test_signals.py` | Impulse and sine WAVs for the in-Live tests |
-| `build/build_device.py` | Regenerates the device from `dsp/hh_core.genexpr` |
-| `docs/HH_MODELING_NOTES.md` | Research findings, verified facts vs. approximations |
-| `docs/TEST_PLAN_in_Max.md` | In-Max/Live test procedure (M1–M18) |
-| `RELEASE_STATUS.md` | Feature status per spec §16 |
+| `devices/Echolivity_HH.amxd` | The device (48 Live parameters). Container format matches real devices; not yet loaded in Live |
+| `devices/Echolivity_HH.maxpat` | The same device as an editable Max patcher |
+| `dsp/hh_core.genexpr` | The DSP: a single gen~ codebox, the source of truth |
+| `reference/tape_engine.py` | Python/Numba mirror of the DSP, for offline measurement |
+| `build/` | Device generator, parameter-table and regression-report generators |
+| `tests/` | Reference suite, GenExpr-source tests, golden renders, CPU proxy, investigations |
+| `docs/` | Architecture, signal flow, parameters, modelling notes, test plan, reports |
+| `CHANGELOG.md`, `KNOWN_LIMITATIONS.md`, `RELEASE_STATUS.md` | Release documents |
 
-## Installing / opening
-**Route A (try first):** drag `devices/Echolivity_HH.amxd` onto an audio track in Live 12.
+## Installing
+**Route A:** copy `devices/Echolivity_HH.amxd` into your Live User Library (or drag it onto an audio track).
 
-**Route B (if A fails to load):**
-1. In Live, drop an empty **Max Audio Effect** on a track and click its Edit button.
-2. In the Max editor, delete the default `plugin~` / `plugout~` objects.
-3. In Max, open `devices/Echolivity_HH.maxpat`, unlock it, select all, copy, and paste into the device editor.
-4. Save as `Echolivity_HH.amxd` in your User Library.
+**Route B** (if A fails, or to get a Max-written container):
+1. In Live, add an empty **Max Audio Effect** and click Edit.
+2. Delete its default `plugin~` / `plugout~`.
+3. Open `devices/Echolivity_HH.maxpat` in Max, unlock, select all, copy, and paste into the device.
+4. Save as `Echolivity_HH.amxd`.
 
-Then run test **M1**: open the gen~ object and check the Max console for compile errors. Please send me any error text verbatim.
+Then please run `docs/TEST_PLAN_Max_Live.md`, starting with G01 (gen~ compiles) and G03–G05 (golden renders). Send back the Max console text verbatim and the `compare.py` output.
 
-## Editing workflow
-Edit `dsp/hh_core.genexpr` **and** `reference/tape_engine.py` together, then:
+## Building from source
 ```
-python3 tests/run_tests.py       # algorithm checks
-python3 build/build_device.py    # regenerate the device
+pip install numpy scipy numba matplotlib      # gcc needed for the CPU proxy only
+python3 build/build_device.py                 # regenerate devices/ from dsp/hh_core.genexpr
+python3 build/make_param_table.py
+python3 tests/run_tests.py                    # reference suite: 38 tests
+python3 tests/genexpr_sim/run_gx_tests.py     # the shipped .genexpr vs the reference: 11 tests
+python3 tests/genexpr_sim/run_cpu_proxy.py    # CPU/memory proxy
+python3 tests/golden/make_golden.py           # golden renders for G03–G05
+python3 build/make_regression_report.py
 ```
-Requires Python 3 with numpy, scipy and numba (`pip install numpy scipy numba`).
+When changing DSP, edit `dsp/hh_core.genexpr` and `reference/tape_engine.py` together. `run_gx_tests.py` fails if they diverge.
 
-## Controls (current)
-- **Delay:** SYNC / TAP / MANUAL tabs, the DELAY slider, sync division / type / multiplier / offset, tap division / type, and TAP. Readouts show the delay in ms and the tap BPM.
-- **Tape (H&H legends where known):** Echo Repeat, Saturation, Echo Bass, Echo Treble, Wow, Flutter, Noise, Slider Response.
-- **Perform:** HOLD / DRIVE / STOP pads (momentary) plus LATCH toggles; Drive Amount, Stop Time, Start Time.
+## Controls
+- **Delay:**
+  - SYNC / TAP / MANUAL, the DELAY slider (sliding replay head);
+  - sync division / type / multiplier / offset; tap division / type; TAP;
+  - readouts for delay in ms and tap BPM.
+- **Tape:** Echo Repeat, Saturation, Echo Bass, Echo Treble, Wow, Flutter, Tape Noise, Slider Response.
+- **Perform:** HOLD / DRIVE / STOP pads (momentary with the mouse or a CC footswitch) plus LATCH toggles; Drive Amount, Stop Time, Start Time.
 - **Filters:** Repeat HP/LP/Resonance, Echo HP/LP, Dry Treble.
-- **Input/Output:** Volume (+6 dB = the original's '10'), Dry, Echo Volume, Output, meters.
-- **Engine:** Slider Mechanism (HEAD/SPEED), Stereo (MONO/DUAL), Head Speed Limit, Mode Transition, Hold Feedback, Head Spacing (speed mode), DRV FB, LIMIT (record limiter), Tape Loop SHORT/LONG, Splice.
+- **Output:**
+  - Volume (+6 dB equals the original's "10"), Dry, Echo Volume, Output, meters;
+  - **PROTECT** with **Ceiling** (new in v0.2.1), GR readout, OVER lamp.
+- **Engine:** Slider Mechanism (HEAD/SPEED), Stereo (MONO/DUAL), Head Speed Limit, Mode Transition, Hold Feedback, Head Spacing, DRV FB, LIMIT (H&H record limiter), Tape Loop SHORT/LONG, Splice.
+
+Every parameter is listed in `docs/PARAMETERS.md`.

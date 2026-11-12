@@ -1,0 +1,26 @@
+{
+ "sample_rate": 48000,
+ "note": "All other parameters at factory default. Use a FRESH device instance (tape empty, loop position 0) and render from the start of the clip.",
+ "scenarios": {
+  "GOLD1": {
+   "Tape Noise": -120.0,
+   "Wow": 0.0,
+   "Flutter": 0.0,
+   "Splice": 0.0
+  },
+  "GOLD2": {
+   "Tape Noise": -120.0,
+   "Wow": 0.0,
+   "Flutter": 0.0,
+   "Splice": 0.0,
+   "Echo Repeat": 0.8,
+   "Delay Slider": 250.0
+  },
+  "GOLD3": {
+   "Tape Noise": -120.0,
+   "Wow": 0.0,
+   "Flutter": 0.0,
+   "Splice": 0.0
+  }
+ }
+}

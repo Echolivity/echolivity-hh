@@ -1,4 +1,6 @@
-# H&H Echo Unit — modeling notes (v0.2)
+# H&H Echo Unit — modeling notes (v0.2; unchanged in v0.2.1)
+
+> v0.2.1 made no change to the hardware model. Output protection, sample-rate snapping, NaN/denormal guards and the direct box-sum read are engineering additions, documented in `docs/ARCHITECTURE.md` and `CHANGELOG.md`.
 
 **Primary source:** *MAJ Electronic Service Manual M107 — HH Electronic Echo Unit, Multi Echo, Digital Echo Unit, Digital Multi Echo* (uploaded by the project owner). It includes the tape-unit specifications and the **Echo Unit circuit diagram, drawing C/AC20000, issue 7 (26-5-77)**. Issue history on the drawing: 20-8-74, 13-1-75, 7-3-75, 16-4-75, 15-10-75 (R41 was 47k), 23-4-77 (bias oscillator mods), 26-5-77 (AS00004 R5 was 220R).
 
