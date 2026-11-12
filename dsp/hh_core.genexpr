@@ -1,0 +1,487 @@
+// =====================================================================
+// ECHOLIVITY — H&H ECHO UNIT  ·  tape engine core v0.2 (gen~ codebox)
+// Mirror of reference/tape_engine.py — keep both in step.
+//
+// Circuit basis: HH Service Manual M107, Echo Unit drawing C/AC20000 iss.7
+//   record node -> Q3 limiter (80 mV, 10:1) -> IC9 pre-emphasis -> tape
+//   -> sliding replay head (12 ips) -> playback EQ (3.27 ms / 70.5 us)
+//   -> REPEAT (pre-tone) -> Baxandall Bass/Treble -> Echo Volume
+//   dry: channel amp (+6 dB max) -> dry Treble -> output
+// Level convention: 100 mV (H/H nominal) == -18 dBFS RMS.
+//
+// in1/in2  : audio L/R
+// out1/out2: audio L/R
+// out3: effective delay (ms)   out4: tap BPM
+// out5: record-limiter gain    out6: read rate (pitch ratio)
+// =====================================================================
+
+// ---------- stateful helpers (each call site gets its own state) ------
+svf(x, fc, q) {
+	History s1(0);
+	History s2(0);
+	fcc = clamp(fc, 5, samplerate * 0.49);
+	g = tan(pi * fcc / samplerate);
+	k = 1 / q;
+	a1 = 1 / (1 + g * (g + k));
+	a2 = g * a1;
+	a3 = g * a2;
+	v3 = x - s2;
+	v1 = a1 * s1 + a2 * v3;
+	v2 = s2 + a2 * s1 + a3 * v3;
+	s1 = 2 * v1 - s1;
+	s2 = 2 * v2 - s2;
+	return v2, v1, x - k * v1 - v2;
+}
+
+lp1(x, fc) {
+	History z(0);
+	a = 1 - exp(-twopi * min(fc, samplerate * 0.49) / samplerate);
+	z = z + a * (x - z);
+	return z;
+}
+
+hp1(x, fc) {
+	return x - lp1(x, fc);
+}
+
+// H(s) = kdc (1 + s/wz)/(1 + s/wp); bilinear prewarped at fw
+zp1(x, kdc, fz, fp, fw) {
+	History x1(0);
+	History y1(0);
+	fww = min(fw, samplerate * 0.45);
+	K = twopi * fww / tan(pi * fww / samplerate);
+	cz = K / (twopi * fz);
+	cp = K / (twopi * fp);
+	y = (kdc * ((1 + cz) * x + (1 - cz) * x1) - (1 - cp) * y1) / (1 + cp);
+	x1 = x;
+	y1 = y;
+	return y;
+}
+
+lowshelf(x, gdb, fc, fw) {
+	A = pow(10, abs(gdb) / 20);
+	kdc = (gdb >= 0) ? A : 1 / A;
+	fz = (gdb >= 0) ? A * fc : fc;
+	fp = (gdb >= 0) ? fc : A * fc;
+	return zp1(x, kdc, fz, fp, fw);
+}
+
+highshelf(x, gdb, fc, fw) {
+	A = pow(10, abs(gdb) / 20);
+	fz = (gdb >= 0) ? fc : A * fc;
+	fp = (gdb >= 0) ? A * fc : fc;
+	return zp1(x, 1, fz, fp, fw);
+}
+
+dcblock(x) {
+	History x1(0);
+	History y1(0);
+	R = 1 - twopi * 10 / samplerate;
+	y = x - x1 + R * y1;
+	x1 = x;
+	y1 = y;
+	return y;
+}
+
+hermite(xm1, x0, x1, x2, f) {
+	c1 = 0.5 * (x1 - xm1);
+	c2 = xm1 - 2.5 * x0 + 2 * x1 - 0.5 * x2;
+	c3 = 0.5 * (x2 - xm1) + 1.5 * (x0 - x1);
+	return ((c3 * f + c2) * f + c1) * f + x0;
+}
+
+tapesat(x, b) {
+	tb = tanh(b);
+	return (tanh(x + b) - tb) / (1 - tb * tb);
+}
+
+// one tape track (+ its dry channel)
+chan(y_in, xin, xdry, gp, fc_tape, fbhp, fblp, q_fb, fb_amt, guard, dfb_g, in_g, drive_gain,
+     hold_s, noise_g, g_t, fc_rec, bass_db, treble_db, dtreb_db, ehp, elp, lim_on, a_att, a_rel) {
+	History lenv(0);
+	// --- replay head + playback preamp
+	y = y_in * gp;
+	tl, tb_, th = svf(y, fc_tape, 0.707);           // tape HF loss (fitted to spec)
+	y = hp1(tl, 48.7);                              // playback EQ tau1 = 3.27 ms
+	y = hp1(y, 15.4);                               // C4/R8
+	y = hp1(y, 15.4);                               // C1/R1
+	y = y + lp1(noise(), 10000) * noise_g;          // replay noise (recirculates)
+	// --- REPEAT, taken before the tone controls (M107)
+	f1l, f1b, f1h = svf(y, fbhp, q_fb);
+	f2l, f2b, f2h = svf(f1h, fblp, q_fb);
+	fbabs = abs(f2l * fb_amt);
+	fbs = f2l * fb_amt * guard * dfb_g;
+	// --- record node: channel amp (clean op-amp) + repeat
+	xa = clamp(xin * in_g, -17.8, 17.8);
+	u = xa * drive_gain * (1 - hold_s) + fbs;
+	u = hp1(u, 19.3);                               // record input coupling
+	// Q3 limiter: half-wave peak of the pre-emphasised record signal
+	det = max(zp1(u, 1, 6047, 15392, 11000), 0);
+	lenv = lenv + ((det > lenv) ? a_att : a_rel) * (det - lenv);
+	g_l = 1;
+	if (lim_on > 0.5 && lenv > 0.2828) {
+		g_l = pow(lenv / 0.2828, -0.9);             // 10:1 static curve
+	}
+	u = u * g_l;
+	u = zp1(u, 1, 6047, 15392, 11000);              // IC9 record pre-emphasis
+	u = tapesat(u * g_t * drive_gain, 0.05) / g_t;  // tape (DRIVE pushes into it)
+	u = dcblock(u);
+	rl, rb, rh = svf(u, fc_rec, 0.707);             // record / anti-alias LPF
+	// --- echo output: Baxandall Bass/Treble outside the loop, perf filters
+	e = lowshelf(y, bass_db * 1.5, 65, 100);
+	e = highshelf(e, treble_db * 18 / 14, 1580, 10000);
+	e1l, e1b, e1h = svf(e, ehp, 0.707);
+	e2l, e2b, e2h = svf(e1h, elp, 0.707);
+	ech = dcblock(e2l);
+	// --- dry path: dry Treble (IC7)
+	xd = clamp(xdry * in_g, -17.8, 17.8);
+	dryo = highshelf(xd, dtreb_db * 20 / 16, 1245, 10000);
+	return rl, ech, dryo, fbabs, g_l;
+}
+
+// ---------- tape ------------------------------------------------------
+Data tape(800000, 2);
+Data integ(800000, 2);
+
+// ---------- parameters ------------------------------------------------
+Param in_gain_db(6, min=-36, max=12);
+Param dry(0.5, min=0, max=1);
+Param echo(0.5, min=0, max=1.5);
+Param out_db(0, min=-36, max=12);
+Param mode(2, min=0, max=2);
+Param manual_ms(350, min=2, max=4000);
+Param bpm(120, min=20, max=999);
+Param sync_div(2, min=0, max=5);
+Param sync_type(0, min=0, max=2);
+Param sync_mult(1, min=1, max=8);
+Param offset_ms(0, min=-100, max=100);
+Param tap(0, min=0, max=1000000);   // monotonically increasing tap counter
+Param tap_div(3, min=0, max=5);
+Param tap_type(0, min=0, max=2);
+Param feedback(0.45, min=0, max=1.2);
+Param bass_db(0, min=-10, max=10);
+Param treble_db(0, min=-14, max=14);
+Param sat(0.5, min=0, max=1);
+Param noise_db(-60, min=-120, max=-30);
+Param wow(0.05, min=0, max=1);
+Param flutter(0.1, min=0, max=1);
+Param hold(0, min=0, max=1);
+Param hold_fb(1, min=0.9, max=1.05);
+Param drive(0, min=0, max=1);
+Param drive_db(12, min=0, max=24);
+Param drive_fb(0, min=0, max=1);
+Param tape_stop(0, min=0, max=1);
+Param stop_time(1, min=0.05, max=8);
+Param start_time(0.4, min=0.05, max=8);
+Param slider_mode(0, min=0, max=1);
+Param glide_ms(60, min=1, max=2000);
+Param transition_ms(250, min=1, max=4000);
+Param fb_hp_hz(10, min=10, max=2000);
+Param fb_lp_hz(20000, min=500, max=20000);
+Param fb_res(0, min=0, max=1);
+Param echo_hp_hz(10, min=10, max=2000);
+Param echo_lp_hz(20000, min=500, max=20000);
+Param stereo(0, min=0, max=1);
+Param head_spacing_ms(300, min=20, max=1000);
+Param bar_beats(4, min=1, max=16);
+Param head_slew(3, min=0.05, max=8);
+Param dry_treble_db(0, min=-16, max=16);
+Param limiter(1, min=0, max=1);
+Param loop_type(1, min=0, max=1);
+Param splice(0.25, min=0, max=1);
+
+// ---------- state -----------------------------------------------------
+History p(0);
+History r_prev(0);
+History loop_pos(0);
+History first(1);
+History rec_p0(0);
+History rec_p1(0);
+History Ts1(-1);
+History Ts2(-1);
+History d_head(-1);
+History s_stop(1);
+History hold_s(0);
+History drive_s(0);
+History env(0);
+History prev_mode(-1);
+History trans_left(0);
+History nsamp(0);
+History tap_prev(0);
+History last_tap(-1);
+History t_count(0);
+History ti0(0);
+History ti1(0);
+History ti2(0);
+History ti3(0);
+History tap_bpm(120);
+History wow_ph(0);
+History fl_ph(0);
+History fl2_ph(0);
+History wow_rnd(0);
+History fl_rnd(0);
+
+N = 800000;
+sr = samplerate;
+t = nsamp;
+nsamp = nsamp + 1;
+
+// ================= TAP TEMPO (sample counter) =========================
+if (tap > tap_prev + 0.5) {                      // tap counter increased = one tap
+	if (last_tap >= 0) {
+		iv = t - last_tap;
+		if (iv < 0.15 * sr) {
+			iv = -1;                               // double tap: ignore
+		} else if (iv > 2 * sr) {
+			t_count = 0;                           // too long: restart
+			last_tap = t;
+		} else {
+			if (t_count > 0) {
+				avg0 = (ti0 + ti1 + ti2 + ti3) / min(t_count, 4);
+				if (abs(iv - avg0) > 0.4 * avg0) {
+					t_count = 0;                   // outlier: new sequence
+				}
+			}
+			ti3 = ti2;
+			ti2 = ti1;
+			ti1 = ti0;
+			ti0 = iv;
+			if (t_count == 0) {
+				ti1 = 0;
+				ti2 = 0;
+				ti3 = 0;
+			}
+			t_count = min(t_count + 1, 4);
+			avg = (ti0 + ti1 + ti2 + ti3) / t_count;
+			tap_bpm = 60 * sr / avg;
+			last_tap = t;
+		}
+	} else {
+		last_tap = t;
+	}
+}
+tap_prev = tap;
+
+// ================= TARGET DELAY TIME ==================================
+T = manual_ms * 0.001;
+if (mode < 1.5) {
+	use_bpm = max(bpm, 20);
+	div = floor(sync_div + 0.5);
+	typ = floor(sync_type + 0.5);
+	if (mode >= 0.5) {
+		use_bpm = tap_bpm;
+		div = floor(tap_div + 0.5);
+		typ = floor(tap_type + 0.5);
+	}
+	beats = 0.125;
+	if (div == 1) { beats = 0.25; }
+	else if (div == 2) { beats = 0.5; }
+	else if (div == 3) { beats = 1; }
+	else if (div == 4) { beats = 2; }
+	else if (div >= 5) { beats = bar_beats; }
+	if (typ == 1) { beats = beats * 1.5; }
+	else if (typ == 2) { beats = beats * 2 / 3; }
+	T = 60 / use_bpm * beats * max(sync_mult, 1) + offset_ms * 0.001;
+}
+T = clamp(T, 0.002, 4);
+
+if (mode != prev_mode) {
+	if (prev_mode >= 0) {
+		trans_left = transition_ms * 0.001 * sr * 3;
+	}
+	prev_mode = mode;
+}
+tau_ms = glide_ms;
+if (trans_left > 0) {
+	tau_ms = max(transition_ms, glide_ms);
+	trans_left = trans_left - 1;
+}
+a_s = 1 - exp(-1 / (max(tau_ms, 0.5) * 0.001 * sr));
+Ts = T * sr;
+if (Ts1 < 0) {
+	Ts1 = Ts;
+	Ts2 = Ts;
+}
+Ts1 = Ts1 + a_s * (Ts - Ts1);
+Ts2 = Ts2 + a_s * (Ts1 - Ts2);                     // 2-pole: continuous pitch
+
+// ================= TRANSPORT ==========================================
+if (tape_stop > 0.5) {
+	s_stop = max(0, s_stop - 1 / (max(stop_time, 0.02) * sr));
+} else {
+	s_stop = min(1, s_stop + 1 / (max(start_time, 0.02) * sr));
+}
+
+loop_cells = ((loop_type > 0.5) ? (3.0 / 0.305) : (0.65 / 0.305)) * sr;
+wow_ph = wow_ph + 0.7 / sr;
+wow_ph = wow_ph - floor(wow_ph);
+fl_ph = fl_ph + 8.5 / sr;
+fl_ph = fl_ph - floor(fl_ph);
+fl2_ph = fl2_ph + 17.3 / sr;
+fl2_ph = fl2_ph - floor(fl2_ph);
+wow_rnd = wow_rnd + (1 - exp(-twopi * 0.5 / sr)) * (noise() * 3 - wow_rnd);
+fl_rnd = fl_rnd + (1 - exp(-twopi * 20 / sr)) * (noise() * 2 - fl_rnd);
+loop_ph = loop_pos / loop_cells;
+wf = wow * 0.006 * (0.7 * sin(twopi * wow_ph) + 0.3 * wow_rnd)
+   + flutter * 0.002 * (0.5 * sin(twopi * fl_ph) + 0.2 * sin(twopi * fl2_ph) + 0.3 * fl_rnd)
+   + flutter * 0.0005 * sin(twopi * loop_ph);     // loop-synchronous tension variation
+
+v_base = 1;
+d = Ts2;
+if (slider_mode < 0.5) {
+	// SLIDING REPLAY HEAD (M107) — head-speed limit |dd/dt| <= head_slew
+	if (d_head < 0) {
+		d_head = Ts2;
+	}
+	hs = max(head_slew, 0.05);
+	d_head = d_head + clamp(Ts2 - d_head, -hs, hs);
+	d = d_head;
+} else {
+	// VARIABLE SPEED (option) — fixed head spacing, speed follows target
+	d = head_spacing_ms * 0.001 * sr;
+	d_head = Ts2;
+	v_base = clamp(d / Ts2, 0.05, 4);
+}
+d = clamp(d, 8, N - 16);
+v_eff = clamp(v_base * s_stop * (1 + wf), 0, 4);
+
+p_new = p + v_eff;
+r = p_new - d;
+rho = r - r_prev;
+if (first > 0.5) {
+	rho = 1;
+	first = 0;
+}
+w_box = clamp(abs(rho) - 1, 0, 1);
+r_a = r_prev;
+r_prev = r;
+
+// splice: a fixed point on the loop passing the replay head
+sp_pos = wrap(loop_pos + v_eff - d, 0, loop_cells);
+sp_w = 0.004 * sr;
+sp_g = 1;
+if (sp_pos < sp_w) {
+	sp_g = 1 - splice * 0.7 * 0.5 * (1 - cos(twopi * sp_pos / sp_w));
+}
+loop_pos = wrap(loop_pos + v_eff, 0, loop_cells);
+
+// ================= gates & per-sample coefficients ====================
+a10 = 1 - exp(-1 / (0.010 * sr));
+hold_s = hold_s + a10 * (hold - hold_s);
+drive_s = drive_s + a10 * (drive - drive_s);
+drive_gain = pow(10, drive_s * drive_db / 20);
+g_t = 2.12 * pow(4, 2 * (sat - 0.5));
+gp = min(1, v_eff / 0.15) * sp_g;
+fc_rec = min(18000, 0.42 * v_eff * sr);
+fc_tape = clamp(7782 * v_eff, 50, 0.45 * sr);
+fb_amt = feedback * (1 - hold_s) + hold_fb * hold_s;
+q_fb = 0.707 + fb_res * 6;
+in_g = pow(10, in_gain_db / 20);
+a_n = 1 - exp(-twopi * min(10000, 0.49 * sr) / sr);
+noise_g = (noise_db > -119) ? pow(10, noise_db / 20) / sqrt((1 / 3) * a_n / (2 - a_n)) : 0;
+dfb_g = (drive_fb > 0.5) ? drive_gain : 1;
+a_att = 1 - exp(-1 / (0.002 * sr));
+a_rel = 1 - exp(-1 / (0.086 * sr));
+
+xin0 = in1;
+xin1 = in2;
+if (stereo < 0.5) {
+	xin0 = 0.5 * (in1 + in2);
+	xin1 = xin0;
+}
+
+guard = 1;
+if (env > 1.5) {
+	guard = 1.5 / env;
+}
+
+// ================= REPLAY HEAD READ ===================================
+ri = floor(r);
+rf = r - ri;
+i0 = wrap(ri, 0, N);
+im1 = wrap(i0 - 1, 0, N);
+ip1 = wrap(i0 + 1, 0, N);
+ip2 = wrap(i0 + 2, 0, N);
+// peek() returns (value, index); take only the value into named variables
+m0 = peek(tape, im1, 0);
+c0 = peek(tape, i0, 0);
+n0 = peek(tape, ip1, 0);
+q0 = peek(tape, ip2, 0);
+m1 = peek(tape, im1, 1);
+c1 = peek(tape, i0, 1);
+n1 = peek(tape, ip1, 1);
+q1 = peek(tape, ip2, 1);
+yr0 = hermite(m0, c0, n0, q0, rf);
+yr1 = hermite(m1, c1, n1, q1, rf);
+if (w_box > 0) {
+	// box-integrated read (anti-alias when the head moves faster than 1x)
+	ai = floor(r_a);
+	af = r_a - ai;
+	a0 = wrap(ai, 0, N);
+	a1 = wrap(a0 + 1, 0, N);
+	ib0 = peek(integ, i0, 0);
+	ia0 = peek(integ, a0, 0);
+	ta0 = peek(tape, a1, 0);
+	ib1 = peek(integ, i0, 1);
+	ia1 = peek(integ, a0, 1);
+	ta1 = peek(tape, a1, 1);
+	Ib0 = ib0 + rf * n0;
+	Ia0 = ia0 + af * ta0;
+	Ib1 = ib1 + rf * n1;
+	Ia1 = ia1 + af * ta1;
+	yr0 = yr0 + w_box * ((Ib0 - Ia0) / rho - yr0);
+	yr1 = yr1 + w_box * ((Ib1 - Ia1) / rho - yr1);
+}
+
+// ================= TRACK PROCESSING ===================================
+rec0, ech0, dry0, fa0, gl0 = chan(yr0, xin0, in1, gp, fc_tape, fb_hp_hz, fb_lp_hz, q_fb, fb_amt,
+                                  guard, dfb_g, in_g, drive_gain, hold_s, noise_g, g_t, fc_rec,
+                                  bass_db, treble_db, dry_treble_db, echo_hp_hz, echo_lp_hz,
+                                  limiter, a_att, a_rel);
+rec1, ech1, dry1, fa1, gl1 = chan(yr1, xin1, in2, gp, fc_tape, fb_hp_hz, fb_lp_hz, q_fb, fb_amt,
+                                  guard, dfb_g, in_g, drive_gain, hold_s, noise_g, g_t, fc_rec,
+                                  bass_db, treble_db, dry_treble_db, echo_hp_hz, echo_lp_hz,
+                                  limiter, a_att, a_rel);
+if (stereo < 0.5) {
+	rec1 = rec0;
+	ech1 = ech0;
+}
+rec0 = fixnan(rec0);
+rec1 = fixnan(rec1);
+
+fbmax = max(fa0, fa1);
+a_up = 1 - exp(-1 / (0.001 * sr));
+a_dn = 1 - exp(-1 / (0.200 * sr));
+env = env + ((fbmax > env) ? a_up : a_dn) * (fbmax - env);
+
+// ================= RECORD HEAD: write every cell crossed ==============
+if (v_eff > 0) {
+	for (k0 = floor(p) + 1; k0 <= p_new; k0 += 1) {
+		f = (k0 - p) / v_eff;
+		ki = wrap(k0, 0, N);
+		km = wrap(ki - 1, 0, N);
+		w0 = rec_p0 + f * (rec0 - rec_p0);
+		w1 = rec_p1 + f * (rec1 - rec_p1);
+		pi0 = peek(integ, km, 0);
+		pi1 = peek(integ, km, 1);
+		poke(tape, w0, ki, 0);
+		poke(tape, w1, ki, 1);
+		poke(integ, pi0 + w0, ki, 0);
+		poke(integ, pi1 + w1, ki, 1);
+	}
+}
+rec_p0 = rec0;
+rec_p1 = rec1;
+p = p_new;
+if (p >= N) {
+	p = p - N;
+	r_prev = r_prev - N;
+}
+
+og = pow(10, out_db / 20);
+out1 = (dry0 * dry + ech0 * echo) * og;
+out2 = (dry1 * dry + ech1 * echo) * og;
+out3 = (d / max(v_eff, 0.000000001)) / sr * 1000;
+out4 = tap_bpm;
+out5 = gl0;
+out6 = rho;
