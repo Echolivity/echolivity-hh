@@ -107,7 +107,61 @@ line(plugin, 1, gen, 1)
 line(gen, 0, plugout, 0)
 line(gen, 1, plugout, 1)
 
-exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "layout_hh.py")).read())
+LAYOUT = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "layout_hh.py")).read()
+_snap = (len(boxes), len(lines), _n[0])
+
+
+def run_layout(pal):
+    del boxes[_snap[0]:]
+    del lines[_snap[1]:]
+    _n[0] = _snap[2]
+    globals()["_PAL"] = pal
+    exec(LAYOUT, globals())
+    return json.loads(json.dumps(boxes))
+
+
+# ---- UI theme switch -----------------------------------------------------------
+# Build the layout once per palette; every top-level attribute that differs between
+# the builds must be a colour (asserted). Each theme becomes one message of
+# "script sendbox <varname> <attr> r g b a" lines sent to thispatcher.
+_variants = {p: run_layout(p) for p in ("ember", "el")}
+DEFAULT_THEME = os.environ.get("HH_PALETTE", "ember")
+run_layout(DEFAULT_THEME)
+_A, _B = _variants["ember"], _variants["el"]
+assert len(_A) == len(_B) == len(boxes)
+theme_msgs = {"ember": [], "el": []}
+themed_boxes = 0
+for a, b, fin in zip(_A, _B, boxes):
+    a, b, fb = a["box"], b["box"], fin["box"]
+    assert a["id"] == b["id"] and a["maxclass"] == b["maxclass"] and set(a) == set(b)
+    diff = [k for k in a if a[k] != b[k] and k != "saved_attribute_attributes"]
+    va = a.get("saved_attribute_attributes", {}).get("valueof", {})
+    vb = b.get("saved_attribute_attributes", {}).get("valueof", {})
+    assert {k: v for k, v in va.items() if k != "parameter_initial"} == \
+           {k: v for k, v in vb.items() if k != "parameter_initial"}, a["id"]
+    if not diff:
+        continue
+    for k in diff:
+        assert isinstance(a[k], list) and len(a[k]) == 4, (a["id"], k)
+    themed_boxes += 1
+    fb.setdefault("varname", "thm_" + fb["id"].replace("-", "_"))
+    for name, src in (("ember", a), ("el", b)):
+        for k in diff:
+            theme_msgs[name].append("script sendbox %s %s %s" % (
+                fb["varname"], k, " ".join("%.4g" % v for v in src[k])))
+_vn = [b["box"]["varname"] for b in boxes if "varname" in b["box"]]
+assert len(_vn) == len(set(_vn)), "duplicate scripting names"
+_tsel = obj("sel 0 1", [1620, 300, 60, 22], nin=3, nout=3, otype=["bang", "bang", ""])
+_tp = obj("thispatcher", [1620, 420, 80, 22], nin=1, nout=2, otype=["", ""])
+_ldb = obj("live.thisdevice", [1620, 240, 90, 22], nin=1, nout=3, otype=["bang", "int", "int"])
+line(_ldb, 0, theme_tab, 0)          # re-send the stored theme once the device is loaded
+line(theme_tab, 0, _tsel, 0)
+CHUNK = 40   # sendbox lines per message box (keeps each box small)
+for i, name in enumerate(("ember", "el")):
+    for j in range(0, len(theme_msgs[name]), CHUNK):
+        m = msg(", ".join(theme_msgs[name][j:j + CHUNK]), [1620 + 160 * i, 340 + 2 * j, 150, 22])
+        line(_tsel, i, m, 0)
+        line(m, 0, _tp, 0)
 # parameter registry, as real devices carry it ({box id: [longname, shortname, 0]})
 registry = {}
 for b in boxes:
@@ -150,4 +204,5 @@ amxd = (b"ampf" + struct.pack("<I", 4) + b"aaaa" +
 open(os.path.join(ROOT, "devices", OUTNAME + ".amxd"), "wb").write(amxd)
 
 nparams = sum(1 for b in boxes if b["box"].get("parameter_enable"))
-print(f"boxes {len(boxes)}, lines {len(lines)}, Live parameters {nparams}")
+print(f"boxes {len(boxes)}, lines {len(lines)}, Live parameters {nparams}, "
+      f"themed boxes {themed_boxes}, theme messages {len(theme_msgs['el'])}, default theme {DEFAULT_THEME}")

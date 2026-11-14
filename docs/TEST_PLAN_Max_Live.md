@@ -45,6 +45,7 @@ Test environment to record: OS + version, CPU, RAM, audio interface + driver, Li
 | L22 | Panel UI (dev) | Open the device in Live with the default and one dark/light Live theme | Layout matches `docs/ui_preview_v0.2.2-dev.png` in arrangement; text legible; no clipped labels; colours acceptable under the theme | Screenshots |
 | L23 | Hardware slider (dev) | Switch Slider Taper WIDE ↔ HW; drag the slider; map Live's LFO to Slider Position; map a MIDI fader | The matching slider is shown (thispatcher script show/hide works in a Live device); delay readout follows 60–600 ms linearly; LFO produces smooth, steady pitch sweeps; no stuck/hidden-both state after reopening the set | Video + screenshots |
 | L24 | DRY MONO (dev) | Stereo source, Dry 1; toggle DRY MONO while playing; then DRY MONO + Stereo MONO with Live's Utility set to show L/R difference | Dry collapses to mono without a click; with both on, the side (L−R) signal is silent | Recording + meter screenshot |
+| L25 | UI theme switch (dev) | Load device (EMBER); click THEME → EL; save set with EL and reopen; check automation chooser and a saved preset; switch back to EMBER | Everything recolours on switch (plates, legends, arcs, tabs, LCDs, meters, OVER), no audio glitch or parameter change; EL is restored after reopen; UI Theme not offered for automation but stored in the preset; EMBER identical to a fresh load | Screenshots of both themes |
 
 ## A — listening tests (Live 12)
 
@@ -56,3 +57,4 @@ Test environment to record: OS + version, CPU, RAM, audio interface + driver, Li
 | A04 | Protection transparency | Toggle Protection on normal material peaking below −1 dBFS: no audible difference (bit-identical in the reference) |
 | A05 | Tone controls | Bass/Treble act on the echo only and don't build up per repeat; Dry Treble on dry only |
 | A06 | Hardware comparison | If a serviced H&H Echo Unit is available: same settings, compare echo tone, limiter behaviour, slider feel |
+

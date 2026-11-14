@@ -87,13 +87,15 @@ The original is mono throughout: Input 1 and Input 2 are summed into one mixing 
 - Off by default so the device doesn't collapse a stereo source when you insert it. On a return track with Dry at 0 it makes no difference.
 - Tests: `tests/test_dry_mono.py` → `tests/DRY_MONO_REPORT.md` (4/4); GX12.
 
-## 8. Colour palette inspired by the original (v0.2.2-dev)
-HH's 1970s units came in black / silver, and their front panels were lit from behind by an **electroluminescent panel**: the legends glow green (often described as blue-green) through perspex. The Multi Echo and the Echo Unit both had it ("Electro Luminescent Front Panel", "backlight of control panel" in dealer listings); the IC100 amplifiers made it famous.
+## 8. UI themes: EMBER (default) and EL
+A **THEME** switch at the top right of the device chooses the colours. It changes only the look, never the sound or any parameter.
+- **EMBER** (default): the warm Echolivity look, with amber, red and teal accents on dark enamel.
+- **EL**: inspired by HH's 1970s units. They were black / silver, with an electroluminescent panel lighting the legends green behind perspex. This theme uses EL-green legends, readouts and arcs, silver toggles, and keeps amber and red for the meters and OVER only.
 
-The default palette **"el"** follows that:
-- near-black chassis, with smoked-perspex section plates edged in silver;
-- EL-green legends, readouts and value arcs (blue-green for the filters);
-- brushed-silver toggles and wordmark;
-- warm amber and red kept only for meters and the OVER lamp.
+Both are original artwork: no HH logo, legend text or panel graphics are copied. The exact EL hue of the Echo Unit isn't documented; it's taken from descriptions of HH's EL panels.
 
-It's original artwork: no HH logo, legend text or panel graphics are copied. The earlier warm palette is kept as **"ember"** (`HH_PALETTE=ember python3 build/build_device.py`). The exact EL hue of the Echo Unit isn't documented; it's taken from descriptions of HH's EL panels.
+**How it works**
+- The choice is a Live parameter set to *Stored Only*. It's saved with the Live set and presets, but it isn't in the automation or modulation lists.
+- `build_device.py` builds the layout once per palette and checks that only colours differ. It turns the differences into `script sendbox` messages to `thispatcher`: 405 colour changes on 102 objects. The stored theme is re-applied on load (`live.thisdevice`).
+- To build a device that *opens* in EL, use `HH_PALETTE=el python3 build/build_device.py`.
+- Tests: `tests/test_ui_theme.py` (TH01–TH04, structural; see `tests/UI_THEME_REPORT.md`). That Max actually redraws the colours is test L25, which can't be run here.

@@ -11,10 +11,13 @@ def rgba(h, a=1.0):
     return [int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4)] + [a]
 
 
-# Palettes. "el" (default) is inspired by HH's 1970s units: black / silver finish and
-# the electroluminescent panel that lights the legends a blue-green behind perspex.
-# Original artwork; no HH logo, legends or panel graphics are copied.
-# "ember" is the earlier Echolivity draft, kept for comparison (HH_PALETTE=ember).
+# Palettes, switchable on the device (THEME, top right). "ember" (default) is the
+# Echolivity warm-enamel look. "el" is inspired by HH's 1970s units: black / silver
+# finish and an electroluminescent panel lighting the legends green behind perspex.
+# Both are original artwork; no HH logo, legends or panel graphics are copied.
+# build_device.py builds the layout once per palette and generates the switch
+# messages from the difference, so every coloured element follows the theme.
+THEMES = ["ember", "el"]
 PALETTES = {
     "el": {
         "bg": "#0c100f", "plate": "#161d1c", "plate_edge": "#46504f",      # smoked perspex over black, silver trim
@@ -33,7 +36,7 @@ PALETTES = {
         "meter_cold": "#5db3a5", "meter_warm": "#e39b3c", "alarm": "#e0583c",
     },
 }
-C = {k: rgba(v) for k, v in PALETTES[os.environ.get("HH_PALETTE", "el")].items()}
+C = {k: rgba(v) for k, v in PALETTES[_PAL].items()}
 DEVW = 1216.0
 px = [120]  # patching x cursor
 
@@ -396,3 +399,10 @@ line(show_hw, 0, tp, 0)
 label("SLIDER ms", [X + 4, 149, 46, 12], size=7.0, color=C["legend"])
 numbox("slider_min_ms", "Slider Min", "SlideMin", 2, 2000, 60, [X + 50, 147], size=(44, 15), unit=2)
 numbox("slider_max_ms", "Slider Max", "SlideMax", 2, 4000, 600, [X + 100, 147], size=(48, 15), unit=2)
+
+# ===== THEME (UI only; stored with the Live set, hidden from automation) =========
+label("THEME", [1086, 1, 30, 12], size=7.0)
+theme_tab = tab("ui_theme", "UI Theme", "Theme", ["EMBER", "EL"], THEMES.index(_PAL), [1116, 0], [96, 13],
+                wire=False, accent=C["amber"], fontsize=7.0)
+boxes[-1]["box"]["saved_attribute_attributes"]["valueof"]["parameter_invisible"] = 1   # Stored Only
+
