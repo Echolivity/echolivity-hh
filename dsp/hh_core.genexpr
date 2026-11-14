@@ -159,6 +159,40 @@ tapesat(x, b) {
 	return (tanh(x + b) - tb) / (1 - tb * tb);
 }
 
+// --- parameter smoothing (v0.2.2-dev): makes every continuous control safe to
+// drive from Live's LFO / Shaper / Envelope Follower or fast automation. The
+// first sample snaps to the target, and the smoother snaps exactly onto a
+// target it has reached, so static settings produce v0.2.1's exact output.
+psmooth(t, a) {
+	History s(0);
+	History init(0);
+	if (init < 0.5) {
+		s = t;
+		init = 1;
+	}
+	s = s + a * (t - s);
+	if (abs(t - s) <= 0.000000001 * max(1, abs(t))) {
+		s = t;
+	}
+	return s;
+}
+
+// frequency parameters are smoothed on a log scale (even-sounding sweeps)
+fsmooth(f, a) {
+	History ls(0);
+	History init(0);
+	lt = log(f);
+	if (init < 0.5) {
+		ls = lt;
+		init = 1;
+	}
+	ls = ls + a * (lt - ls);
+	if (abs(lt - ls) <= 0.000000001) {
+		ls = lt;
+	}
+	return (ls == lt) ? f : exp(ls);
+}
+
 // one tape track (+ its dry channel)
 chan(y_in, xin, xdry, gp, fc_tape, fbhp, fblp, q_fb, fb_amt, guard, dfb_g, in_g, drive_gain,
      hold_s, noise_g, g_t, fc_rec, bass_db, treble_db, dtreb_db, ehp, elp, lim_on, a_att, a_rel) {
@@ -289,6 +323,7 @@ History last_sr(0);
 History pg_hold(1);
 // cached coefficients (v0.2.2-dev): recomputed only when their inputs change
 History ck_sr(-1);
+History ck_ps(0);
 History ck_wow(0);
 History ck_fl(0);
 History ck_a10(0);
@@ -408,10 +443,35 @@ if (sr != ck_sr) {
 	ck_dn = 1 - exp(-1 / (0.200 * sr));
 	ck_prel = 1 - exp(-1 / (0.150 * sr));
 	ck_patt = 1 - exp(-1 / (0.0005 * sr));
+	ck_ps = 1 - exp(-1 / (0.010 * sr));      // 10 ms parameter smoothing
 	ck_sr = sr;
 	ck_tau = -1;
 	ck_nkey = -99999;
 }
+
+// smoothed continuous parameters (used everywhere below)
+sm_in_gain_db = psmooth(in_gain_db, ck_ps);
+sm_dry = psmooth(dry, ck_ps);
+sm_echo = psmooth(echo, ck_ps);
+sm_out_db = psmooth(out_db, ck_ps);
+sm_feedback = psmooth(feedback, ck_ps);
+sm_bass_db = psmooth(bass_db, ck_ps);
+sm_treble_db = psmooth(treble_db, ck_ps);
+sm_sat = psmooth(sat, ck_ps);
+sm_noise_db = psmooth(noise_db, ck_ps);
+sm_wow = psmooth(wow, ck_ps);
+sm_flutter = psmooth(flutter, ck_ps);
+sm_hold_fb = psmooth(hold_fb, ck_ps);
+sm_drive_db = psmooth(drive_db, ck_ps);
+sm_fb_res = psmooth(fb_res, ck_ps);
+sm_head_spacing_ms = psmooth(head_spacing_ms, ck_ps);
+sm_dry_treble_db = psmooth(dry_treble_db, ck_ps);
+sm_splice = psmooth(splice, ck_ps);
+sm_ceiling_db = psmooth(ceiling_db, ck_ps);
+sm_fb_hp_hz = fsmooth(fb_hp_hz, ck_ps);
+sm_fb_lp_hz = fsmooth(fb_lp_hz, ck_ps);
+sm_echo_hp_hz = fsmooth(echo_hp_hz, ck_ps);
+sm_echo_lp_hz = fsmooth(echo_lp_hz, ck_ps);
 
 if (mode != prev_mode) {
 	if (prev_mode >= 0) {
@@ -454,9 +514,9 @@ fl2_ph = fl2_ph - floor(fl2_ph);
 wow_rnd = wow_rnd + ck_wow * (noise() * 3 - wow_rnd);
 fl_rnd = fl_rnd + ck_fl * (noise() * 2 - fl_rnd);
 loop_ph = loop_pos / loop_cells;
-wf = wow * 0.006 * (0.7 * sin(twopi * wow_ph) + 0.3 * wow_rnd)
-   + flutter * 0.002 * (0.5 * sin(twopi * fl_ph) + 0.2 * sin(twopi * fl2_ph) + 0.3 * fl_rnd)
-   + flutter * 0.0005 * sin(twopi * loop_ph);     // loop-synchronous tension variation
+wf = sm_wow * 0.006 * (0.7 * sin(twopi * wow_ph) + 0.3 * wow_rnd)
+   + sm_flutter * 0.002 * (0.5 * sin(twopi * fl_ph) + 0.2 * sin(twopi * fl2_ph) + 0.3 * fl_rnd)
+   + sm_flutter * 0.0005 * sin(twopi * loop_ph);     // loop-synchronous tension variation
 
 v_base = 1;
 d = Ts2;
@@ -470,7 +530,7 @@ if (slider_mode < 0.5) {
 	d = d_head;
 } else {
 	// VARIABLE SPEED (option) — fixed head spacing, speed follows target
-	d = head_spacing_ms * 0.001 * sr;
+	d = sm_head_spacing_ms * 0.001 * sr;
 	d_head = Ts2;
 	v_base = clamp(d / Ts2, 0.05, 4);
 }
@@ -488,12 +548,12 @@ w_box = clamp(abs(rho) - 1, 0, 1);
 r_a = r_prev;
 r_prev = r;
 
-// splice: a fixed point on the loop passing the replay head
+// sm_splice: a fixed point on the loop passing the replay head
 sp_pos = wrap(loop_pos + v_eff - d, 0, loop_cells);
 sp_w = 0.004 * sr;
 sp_g = 1;
 if (sp_pos < sp_w) {
-	sp_g = 1 - splice * 0.7 * 0.5 * (1 - cos(twopi * sp_pos / sp_w));
+	sp_g = 1 - sm_splice * 0.7 * 0.5 * (1 - cos(twopi * sp_pos / sp_w));
 }
 loop_pos = wrap(loop_pos + v_eff, 0, loop_cells);
 
@@ -501,30 +561,30 @@ loop_pos = wrap(loop_pos + v_eff, 0, loop_cells);
 a10 = ck_a10;
 hold_s = hold_s + a10 * (hold - hold_s);
 drive_s = drive_s + a10 * (drive - drive_s);
-dkey = drive_s * drive_db;
+dkey = drive_s * sm_drive_db;
 if (dkey != ck_dkey) {
-	ck_dg = pow(10, drive_s * drive_db / 20);
+	ck_dg = pow(10, drive_s * sm_drive_db / 20);
 	ck_dkey = dkey;
 }
 drive_gain = ck_dg;
-if (sat != ck_sat) {
-	ck_gt = 2.12 * pow(4, 2 * (sat - 0.5));
-	ck_sat = sat;
+if (sm_sat != ck_sat) {
+	ck_gt = 2.12 * pow(4, 2 * (sm_sat - 0.5));
+	ck_sat = sm_sat;
 }
 g_t = ck_gt;
 gp = min(1, v_eff / 0.15) * sp_g;
 fc_rec = min(18000, 0.42 * v_eff * sr);
 fc_tape = clamp(7782 * v_eff, 50, 0.45 * sr);
-fb_amt = feedback * (1 - hold_s) + hold_fb * hold_s;
-q_fb = 0.707 + fb_res * 6;
-if (in_gain_db != ck_ing) {
-	ck_ig = pow(10, in_gain_db / 20);
-	ck_ing = in_gain_db;
+fb_amt = sm_feedback * (1 - hold_s) + sm_hold_fb * hold_s;
+q_fb = 0.707 + sm_fb_res * 6;
+if (sm_in_gain_db != ck_ing) {
+	ck_ig = pow(10, sm_in_gain_db / 20);
+	ck_ing = sm_in_gain_db;
 }
 in_g = ck_ig;
-if (noise_db != ck_nkey) {
-	ck_ng = (noise_db > -119) ? pow(10, noise_db / 20) / ck_nnorm : 0;
-	ck_nkey = noise_db;
+if (sm_noise_db != ck_nkey) {
+	ck_ng = (sm_noise_db > -119) ? pow(10, sm_noise_db / 20) / ck_nnorm : 0;
+	ck_nkey = sm_noise_db;
 }
 noise_g = ck_ng;
 dfb_g = (drive_fb > 0.5) ? drive_gain : 1;
@@ -594,13 +654,13 @@ if (w_box > 0) {
 }
 
 // ================= TRACK PROCESSING ===================================
-rec0, ech0, dry0, fa0, gl0 = chan(yr0, xin0, xl, gp, fc_tape, fb_hp_hz, fb_lp_hz, q_fb, fb_amt,
+rec0, ech0, dry0, fa0, gl0 = chan(yr0, xin0, xl, gp, fc_tape, sm_fb_hp_hz, sm_fb_lp_hz, q_fb, fb_amt,
                                   guard, dfb_g, in_g, drive_gain, hold_s, noise_g, g_t, fc_rec,
-                                  bass_db, treble_db, dry_treble_db, echo_hp_hz, echo_lp_hz,
+                                  sm_bass_db, sm_treble_db, sm_dry_treble_db, sm_echo_hp_hz, sm_echo_lp_hz,
                                   limiter, a_att, a_rel);
-rec1, ech1, dry1, fa1, gl1 = chan(yr1, xin1, xr, gp, fc_tape, fb_hp_hz, fb_lp_hz, q_fb, fb_amt,
+rec1, ech1, dry1, fa1, gl1 = chan(yr1, xin1, xr, gp, fc_tape, sm_fb_hp_hz, sm_fb_lp_hz, q_fb, fb_amt,
                                   guard, dfb_g, in_g, drive_gain, hold_s, noise_g, g_t, fc_rec,
-                                  bass_db, treble_db, dry_treble_db, echo_hp_hz, echo_lp_hz,
+                                  sm_bass_db, sm_treble_db, sm_dry_treble_db, sm_echo_hp_hz, sm_echo_lp_hz,
                                   limiter, a_att, a_rel);
 if (stereo < 0.5) {
 	rec1 = rec0;
@@ -633,22 +693,22 @@ if (p >= N) {
 	r_prev = r_prev - N;
 }
 
-if (out_db != ck_okey) {
-	ck_og = pow(10, out_db / 20);
-	ck_okey = out_db;
+if (sm_out_db != ck_okey) {
+	ck_og = pow(10, sm_out_db / 20);
+	ck_okey = sm_out_db;
 }
 og = ck_og;
-o1 = fixnan((dry0 * dry + ech0 * echo) * og);
-o2 = fixnan((dry1 * dry + ech1 * echo) * og);
+o1 = fixnan((dry0 * sm_dry + ech0 * sm_echo) * og);
+o2 = fixnan((dry1 * sm_dry + ech1 * sm_echo) * og);
 
-// ================= OUTPUT PROTECTION (after dry/wet sum) ==============
+// ================= OUTPUT PROTECTION (after sm_dry/wet sum) ==============
 // Zero-latency, stereo-linked peak limiter (instant requirement capture,
 // 10 ms hold, 0.5 ms gain attack, 150 ms release) into a soft clip that
 // only acts between the limiter threshold (ceiling - 0.5 dB) and the
 // ceiling. Below threshold the signal passes bit-exact. Sample-peak only.
-if (ceiling_db != ck_ckey) {
-	ck_cl = pow(10, ceiling_db / 20);
-	ck_ckey = ceiling_db;
+if (sm_ceiling_db != ck_ckey) {
+	ck_cl = pow(10, sm_ceiling_db / 20);
+	ck_ckey = sm_ceiling_db;
 }
 c_lin = ck_cl;
 thr = c_lin * 0.944061;

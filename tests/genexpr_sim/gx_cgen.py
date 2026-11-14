@@ -17,7 +17,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gx_transpile import P, lex  # noqa: E402
 
-CB = {"floor": "floor", "tan": "tan", "exp": "exp", "sin": "sin", "cos": "cos", "tanh": "tanh",
+CB = {"floor": "floor", "tan": "tan", "exp": "exp", "sin": "sin", "cos": "cos", "tanh": "tanh", "log": "log",
       "abs": "fabs", "sqrt": "sqrt", "pow": "pow", "min": "gx_min", "max": "gx_max", "clamp": "gx_clamp",
       "wrap": "gx_wrap", "noise": "gx_noise", "fixnan": "gx_fixnan", "fixdenorm": "gx_fixdenorm"}
 CONST = {"pi": "M_PI", "twopi": "(2.0*M_PI)", "samplerate": "SR"}

@@ -234,7 +234,7 @@ class P:
 
 # --------------------------------------------------------------- codegen ---
 BUILTIN = {"floor": "math.floor", "tan": "math.tan", "exp": "math.exp", "sin": "math.sin",
-           "cos": "math.cos", "tanh": "math.tanh", "abs": "abs", "sqrt": "math.sqrt",
+           "cos": "math.cos", "tanh": "math.tanh", "log": "math.log", "abs": "abs", "sqrt": "math.sqrt",
            "pow": "_pow", "min": "_min", "max": "_max", "clamp": "_clamp", "wrap": "_wrap",
            "noise": "_noise", "fixnan": "_fixnan", "fixdenorm": "_fixdenorm"}
 CONST = {"pi": "math.pi", "twopi": "(2*math.pi)", "samplerate": "RT.sr"}

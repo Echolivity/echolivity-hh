@@ -37,3 +37,34 @@ Decisions for you:
 - tube oversampling 1× / 2× / 4× (latency vs aliasing);
 - limiter lookahead default (1.5 ms → 1.83 ms total latency);
 - go-ahead for HF-band decramping in the EQ.
+
+## 4. LFO / modulator mapping (v0.2.2-dev)
+- All 48 controls are **"Automated and Stored"** Live parameters, so Live's LFO, Shaper and Envelope Follower, other Max for Live modulators, automation and MIDI can all map to them.
+- The 29 continuous controls also have Modulation Mode = Additive, for Live's clip-envelope modulation.
+- **In the DSP:** 22 continuous controls are now smoothed per sample (10 ms; filter frequencies on a log scale). Live sends modulation as stepped control-rate values, so without this, fast LFOs on Echo Volume, Dry or Output caused stepping noise.
+
+| Control under a 5 ms-stepped LFO (energy above 8 kHz) | v0.2.1 | dev |
+|---|---|---|
+| Output | −55 dB | −100 dB |
+| Dry | −58 dB | −105 dB |
+| Echo Volume | −64 dB | −100 dB |
+| Echo Repeat | −89 dB | −99 dB |
+
+- Modulation still tracks: ±6.0 dB delivered at a 1 Hz LFO, ±5.4 dB at 8 Hz.
+- Static settings are **bit-identical to v0.2.1** (MOD01: 22 controls moved and held, difference 0).
+- The delay slider already had its own glide; mode switches, tabs and pads aren't smoothed (they're discrete).
+- Tests: `tests/test_modulation.py` → `tests/MODULATION_REPORT.md`; GX10 checks that the GenExpr smoothing equals the reference. CPU is unchanged at about 2.2 % (48 kHz, C proxy).
+
+## 5. Panel UI (v0.2.2-dev)
+`build/layout_hh.py`. It's an original Echolivity identity: dark enamel, raised section plates, aged-cream legends, one accent colour per section.
+- **IN:** Volume and input meters.
+- **DELAY (hero):** large SYNC/TAP/MANUAL selector, TAP TEMPO, full-width delay slider, ms and BPM readouts, sync/tap divisions, Offset, Slider Response.
+- **PERFORM:** large HOLD/DRIVE/STOP pads with LATCH, plus Drive dB and Stop/Start times.
+- **TAPE:** large Echo Repeat, Sat, Bass, Treble, Wow, Flutter, Noise, Splice, LIMIT.
+- **FILTERS:** Repeat HP/LP/Res, Echo HP/LP, Dry Treble.
+- **OUTPUT:** Dry, Echo, Output, Ceiling, meters, PROTECT, GR, OVER.
+- **ENGINE:** set-and-forget controls.
+
+Device size is 1216 × 169. Parameter names, ranges and defaults are unchanged from v0.2.1. Structural checks: 0 control overlaps, nothing out of bounds, 0 invalid connections.
+
+`docs/ui_preview_v0.2.2-dev.png` is an **approximate** render from the patch file (`build/render_preview.py`). Max/Live draw the live.* objects with their own artwork, and Live's theme can override some colours, so check it in Live (test L22).

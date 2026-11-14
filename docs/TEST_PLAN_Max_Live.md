@@ -41,6 +41,8 @@ Test environment to record: OS + version, CPU, RAM, audio interface + driver, Li
 | L18 | Reported latency | Hover device title bar / Delay compensation info | Record Live-reported device latency (expected 0 samples; `latency` key = 0) | Screenshot |
 | L19 | Measured latency | Dry 1, Echo 0, Volume 0 dB, Dry Treble 0. Duplicate track; on one, the device; invert polarity of the other (Utility); sum | Null ≤ −100 dB ⇒ 0 samples added. Repeat with Protection on and off | Meter screenshot |
 | L20 | Over / GR display | Push Output +12 dB with Repeat 1.2 | OVER lamp lights; GR readout shows dB; output never exceeds the Ceiling (Live peak meter) | Screenshot |
+| L21 | LFO / modulator mapping (dev) | Map Live's LFO (Map button) to Echo Repeat, Echo Volume, Output, Echo LP and Delay Slider in turn; rate 0.5–8 Hz, full depth | Each control visibly modulates, its base value stays adjustable, no zipper/stepping noise, no clicks | Recording + notes |
+| L22 | Panel UI (dev) | Open the device in Live with the default and one dark/light Live theme | Layout matches `docs/ui_preview_v0.2.2-dev.png` in arrangement; text legible; no clipped labels; colours acceptable under the theme | Screenshots |
 
 ## A — listening tests (Live 12)
 

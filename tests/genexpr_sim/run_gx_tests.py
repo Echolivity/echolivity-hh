@@ -180,6 +180,22 @@ def main():
         bool(np.all(np.isfinite(gx[:, :2]))) and np.max(np.abs(gx[:, :2])) <= 10 ** (-0.3 / 20) + 1e-12,
         f"finite: {bool(np.all(np.isfinite(gx[:, :2])))}, peak {np.max(np.abs(gx[:, :2])):.3f}. Note: +Inf passes fixnan; it is caught by the rail clamp (±17.8) on the channel amp")
 
+    # GX10 LFO-style stepped modulation of continuous controls (smoothing path)
+    n = int(48000 * 1.5)
+    t = np.arange(n) / 48000.0
+    P = quiet(default_params(n))
+    step = np.floor(t / 0.004) * 0.004                 # 4 ms control-rate steps, like a mapped LFO
+    P[:, IDX["feedback"]] = 0.6 + 0.4 * np.sin(2 * np.pi * 1.3 * step)
+    P[:, IDX["echo_lp_hz"]] = 2000 * 2 ** (1.9 * np.sin(2 * np.pi * 0.7 * step))   # stays inside the Param range (gen~ clamps)
+    P[:, IDX["fb_hp_hz"]] = 60 * 2 ** (2 * (np.sin(2 * np.pi * 0.9 * step) + 1))
+    P[:, IDX["bass_db"]] = 10 * np.sin(2 * np.pi * 2.1 * step)
+    P[:, IDX["out_db"]] = -6 + 6 * np.sin(2 * np.pi * 3.0 * step)
+    P[:, IDX["sat"]] = 0.5 + 0.5 * np.sin(2 * np.pi * 0.4 * step)
+    P[:, IDX["dry"]] = 0.5 + 0.5 * np.sin(2 * np.pi * 1.7 * step)
+    P[:, IDX["manual_ms"]] = 220
+    x = 0.3 * np.sin(2 * np.pi * 330 * t) * (t < 0.3) + 0.1 * np.sin(2 * np.pi * 120 * t)
+    compare("GX10", "LFO-style modulation of 7 continuous controls (4 ms steps): smoothing path", P, x, x, 48000.0)
+
     out = os.path.join(HERE, "GX_REPORT.md")
     with open(out, "w") as f:
         f.write("# GenExpr-source test report (Python transpiler)\n\n")

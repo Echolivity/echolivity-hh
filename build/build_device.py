@@ -58,17 +58,22 @@ def comment(text, pres, rect=None, size=9.0, **kw):
                text=text, nin=1, nout=0, fontsize=size, **kw)
 
 
-def pval(longname, short, ptype, lo, hi, init, unit=1, enum=None, expo=1.0, units=None):
+def pval(longname, short, ptype, lo, hi, init, unit=1, enum=None, expo=1.0, units=None, modmode=0):
+    # parameter_invisible 0 = "Automated and Stored": visible to Live automation and to
+    # mapping by Live's LFO / Shaper / Envelope Follower and Max for Live modulators.
+    # parameter_modmode 3 = Additive (Live clip-envelope modulation) for continuous controls.
     v = {"parameter_longname": longname, "parameter_shortname": short,
          "parameter_type": ptype, "parameter_mmin": lo, "parameter_mmax": hi,
          "parameter_initial": [init], "parameter_initial_enable": 1,
-         "parameter_unitstyle": unit}
+         "parameter_unitstyle": unit, "parameter_invisible": 0}
     if enum:
         v["parameter_enum"] = enum
     if expo != 1.0:
         v["parameter_exponent"] = expo
     if units:
         v["parameter_units"] = units
+    if modmode:
+        v["parameter_modmode"] = modmode
     return {"valueof": v}
 
 
@@ -102,270 +107,7 @@ line(plugin, 1, gen, 1)
 line(gen, 0, plugout, 0)
 line(gen, 1, plugout, 1)
 
-# ---- parameter controls -----------------------------------------------------
-px = [120]  # patching x cursor
-
-
-def wire_param(ui, name, outlet=0):
-    x = px[0]
-    pr = obj(f"prepend {name}", [x, 380, 110, 22])
-    line(ui, outlet, pr, 0)
-    line(pr, 0, gen, 0)
-    px[0] += 118
-    return pr
-
-
-def dial(name, longname, short, lo, hi, init, pres, unit=1, expo=1.0, units=None, wire=True):
-    ui = box("live.dial", [px[0], 300, 44, 48], pres=pres + [44, 48], nin=1, nout=2,
-             otype=["", "float"], parameter_enable=1, varname=name,
-             saved_attribute_attributes=pval(longname, short, 0, lo, hi, init, unit, expo=expo, units=units))
-    if wire:
-        wire_param(ui, name)
-    return ui
-
-
-def tab(name, longname, short, enum, init, pres, size, wire=True):
-    ui = box("live.tab", [px[0], 300, size[0], size[1]], pres=pres + size, nin=1, nout=3,
-             otype=["", "", "float"], parameter_enable=1, varname=name, num_lines_patching=1,
-             num_lines_presentation=1,
-             saved_attribute_attributes=pval(longname, short, 2, 0, len(enum) - 1, init, 9, enum=enum))
-    if wire:
-        wire_param(ui, name)
-    return ui
-
-
-def toggle_text(name, longname, short, label, pres, size, mode=1, wire=True, init=0):
-    # mode 1 = toggle (latching), mode 0 = button (momentary)
-    ui = box("live.text", [px[0], 300, size[0], size[1]], pres=pres + size, nin=1, nout=2,
-             otype=["", ""], parameter_enable=1, varname=name, mode=mode, text=label, texton=label,
-             saved_attribute_attributes=pval(longname, short, 2, 0, 1, init, 9, enum=["off", "on"]))
-    if wire:
-        wire_param(ui, name)
-    return ui
-
-
-# Layout (presentation): device height 169 px
-TITLE = comment("ECHOLIVITY  H&H  ECHO UNIT  ·  12 ips sliding head", [8, 2, 300, 18], size=11.0, fontface=1)
-
-# -- input
-dial("in_gain_db", "Volume (Input)", "Volume", -36, 12, 6, [8, 22], unit=4)
-box("live.meter~", [px[0], 470, 10, 60], pres=[58, 22, 6, 100], nin=1, nout=1, otype=["list"])
-mt_in = boxes[-1]["box"]["id"]
-line(plugin, 0, mt_in, 0)
-
-# -- delay-time section
-tab("mode", "Delay Mode", "Mode", ["SYNC", "TAP", "MANUAL"], 2, [76, 22], [180, 20])
-sl = box("live.slider", [px[0], 300, 300, 30], pres=[76, 46, 300, 30], nin=1, nout=2,
-         otype=["", "float"], parameter_enable=1, varname="manual_ms", orientation=1,
-         saved_attribute_attributes=pval("Delay Slider", "Delay", 0, 2, 4000, 350, 2, expo=2.5))
-wire_param(sl, "manual_ms")
-comment("DELAY", [380, 52, 40, 16])
-menu = box("live.menu", [px[0], 300, 60, 15], pres=[76, 82, 56, 15], nin=1, nout=3,
-           otype=["", "", "float"], parameter_enable=1, varname="sync_div",
-           saved_attribute_attributes=pval("Sync Division", "Div", 2, 0, 5, 2, 9,
-                                           enum=["1/32", "1/16", "1/8", "1/4", "1/2", "1 bar"]))
-wire_param(menu, "sync_div")
-tab("sync_type", "Sync Type", "Type", ["STR", "DOT", "TRI"], 0, [136, 82], [90, 15])
-nb = box("live.numbox", [px[0], 300, 36, 15], pres=[230, 82, 30, 15], nin=1, nout=2,
-         otype=["", "float"], parameter_enable=1, varname="sync_mult",
-         saved_attribute_attributes=pval("Sync Multiplier", "Mult", 1, 1, 8, 1, 0))
-wire_param(nb, "sync_mult")
-dial("offset_ms", "Timing Offset", "Offset", -100, 100, 0, [262, 100], unit=2)
-menu2 = box("live.menu", [px[0], 300, 60, 15], pres=[76, 102, 56, 15], nin=1, nout=3,
-            otype=["", "", "float"], parameter_enable=1, varname="tap_div",
-            saved_attribute_attributes=pval("Tap Division", "TapDiv", 2, 0, 5, 3, 9,
-                                            enum=["1/32", "1/16", "1/8", "1/4", "1/2", "1 bar"]))
-wire_param(menu2, "tap_div")
-tab("tap_type", "Tap Type", "TapType", ["STR", "DOT", "TRI"], 0, [136, 102], [90, 15])
-
-# TAP: live.text button -> counter -> gen (gen counts an increase as one tap)
-tapbtn = box("live.text", [px[0], 300, 44, 20], pres=[310, 22, 66, 20], nin=1, nout=2,
-             otype=["", ""], parameter_enable=1, varname="tap_button", mode=0, text="TAP",
-             saved_attribute_attributes=pval("Tap", "Tap", 2, 0, 1, 0, 9, enum=["off", "on"]))
-# v0.2.1: live.text in Button mode outputs a BANG on click (and on a 0->1 parameter
-# transition, e.g. a mapped MIDI note), not a 1 — so trigger the counter with [t b].
-sel = obj("t b", [px[0], 340, 30, 22], nin=1, nout=1, otype=["bang"])
-cnt = obj("counter 1 1000000", [px[0], 360, 100, 22], nin=5, nout=4, otype=["int", "", "", "int"])
-line(tapbtn, 0, sel, 0)
-line(sel, 0, cnt, 0)
-pr = obj("prepend tap", [px[0], 380, 80, 22])
-line(cnt, 0, pr, 0)
-line(pr, 0, gen, 0)
-px[0] += 118
-
-# readouts (UI only; snapshot~ is display-rate, not in the DSP path)
-for outlet, label, pres in ((2, "ms", [76, 122]), (3, "BPM", [160, 122])):
-    sn = obj("snapshot~ 40", [20 + 120 * outlet, 460, 80, 22], nin=2, nout=1, otype=["float"])
-    line(gen, outlet, sn, 0)
-    fl = box("flonum", [20 + 120 * outlet, 490, 56, 22], pres=pres + [56, 18], nin=1, nout=2,
-             otype=["", "bang"], format=6, numdecimalplaces=1, fontsize=11.0)
-    line(sn, 0, fl, 0)
-    comment(label, [pres[0] + 57, pres[1] + 1, 24, 16])
-
-# mouse state for momentary-pad release (UI thread only)
-mst_poll = msg("poll", [1400, 20, 40, 22])
-mst = obj("mousestate", [1400, 50, 80, 22], nin=1, nout=5, otype=["int", "int", "int", "int", "int"])
-mst_chg = obj("change", [1400, 80, 50, 22], nin=2, nout=3, otype=["", "int", "int"])
-mst_up = obj("sel 0", [1400, 110, 40, 22], nin=2, nout=2, otype=["bang", ""])
-
-# host tempo + time signature (event-driven via live.observer; never sets tempo)
-td = obj("live.thisdevice", [700, 20, 90, 22], nin=1, nout=3, otype=["bang", "int", "int"])
-tbb = obj("t b b", [700, 50, 40, 22], nin=1, nout=2, otype=["bang", "bang"])
-mpath = msg("path live_set", [700, 80, 90, 22])
-lpath = obj("live.path", [700, 110, 70, 22], nin=1, nout=3, otype=["", "", ""])
-line(td, 0, tbb, 0)
-line(td, 0, mst_poll, 0)          # start mouse polling once the device is loaded
-line(mst_poll, 0, mst, 0)
-line(mst, 0, mst_chg, 0)
-line(mst_chg, 0, mst_up, 0)
-line(tbb, 0, mpath, 0)
-line(mpath, 0, lpath, 0)
-for i, (prop, dest) in enumerate((("tempo", "bpm"), ("signature_numerator", None),
-                                  ("signature_denominator", None))):
-    m = msg(f"property {prop}", [700 + 130 * i, 140, 120, 22])
-    ob = obj("live.observer", [700 + 130 * i, 170, 80, 22], nin=2, nout=2, otype=["", ""])
-    line(tbb, 1, m, 0)
-    line(m, 0, ob, 0)
-    line(lpath, 0, ob, 1)
-    if dest:
-        p_ = obj("prepend bpm", [700, 200, 80, 22])
-        line(ob, 0, p_, 0)
-        line(p_, 0, gen, 0)
-        bpm_ob = ob
-    elif prop == "signature_numerator":
-        num_ob = ob
-    else:
-        den_ob = ob
-pak = obj("pak 4 4", [830, 200, 60, 22], nin=2, nout=1)
-ex = obj("expr $f1*4./$f2", [830, 225, 100, 22], nin=2, nout=1)
-pb = obj("prepend bar_beats", [830, 250, 110, 22])
-line(num_ob, 0, pak, 0)
-line(den_ob, 0, pak, 1)
-line(pak, 0, ex, 0)
-line(ex, 0, pb, 0)
-line(pb, 0, gen, 0)
-
-# -- tape section
-X = 420
-comment("TAPE", [X, 4, 40, 16])
-dial("feedback", "Echo Repeat", "Repeat", 0, 1.2, 0.45, [X, 22])
-dial("sat", "Tape Saturation", "Sat", 0, 1, 0.5, [X + 48, 22])
-dial("bass_db", "Echo Bass", "Bass", -10, 10, 0, [X + 96, 22], unit=4)
-dial("treble_db", "Echo Treble", "Treble", -14, 14, 0, [X + 144, 22], unit=4)
-dial("wow", "Wow", "Wow", 0, 1, 0.05, [X, 74])
-dial("flutter", "Flutter", "Flutter", 0, 1, 0.1, [X + 48, 74])
-dial("noise_db", "Tape Noise", "Noise", -120, -30, -60, [X + 96, 74], unit=4)
-dial("glide_ms", "Slider Response", "Response", 1, 2000, 60, [X + 144, 74], unit=2, expo=3.0)
-
-# -- performance section: momentary pads (button) + latches (toggle), OR-ed
-X = 620
-comment("PERFORM", [X, 4, 60, 16])
-
-
-# Momentary pads (v0.2.1). live.text Button mode only bangs, so each pad is a
-# Toggle-mode live.text that is released on mouse-up. The release is armed only
-# if the mouse button was down when the pad turned on, so a pad switched on by a
-# MIDI CC (127) stays on until the CC sends 0 — a held CC footswitch is a true
-# momentary. A mapped MIDI NOTE toggles (Live does not pass note-off to a
-# toggle parameter) and therefore behaves as a latch. The pad and its LATCH are
-# OR-ed into the engine.
-
-
-def perf(name, label, y):
-    mom = toggle_text(f"{name}_mom", f"{label} Momentary", label, label, [X, y], [52, 22], mode=1, wire=False)
-    lat = toggle_text(f"{name}_latch", f"{label} Latch", f"{label}L", "LATCH", [X + 54, y], [40, 22], mode=1, wire=False)
-    x0 = px[0]
-    tii = obj("t i i", [x0, 330, 40, 22], nin=1, nout=2, otype=["int", "int"])
-    on = obj("sel 1", [x0, 350, 40, 22], nin=2, nout=2, otype=["bang", ""])
-    mdown = obj("i", [x0 + 50, 350, 30, 22], nin=2, nout=1, otype=["int"])      # mouse state at press
-    gt = obj("gate 1", [x0, 370, 40, 22], nin=2, nout=1, otype=[""])           # armed?
-    zero = msg("0", [x0 + 50, 390, 30, 22])
-    disarm = msg("0", [x0 + 90, 390, 30, 22])
-    line(mom, 0, tii, 0)
-    line(tii, 0, on, 0)                 # left (fires second): arm on press
-    line(on, 0, mdown, 0)
-    line(mdown, 0, gt, 0)               # gate control = mouse button state at press
-    line(mst_chg, 0, mdown, 1)          # keep latest mouse button state
-    line(mst_up, 0, gt, 1)              # mouse released -> through gate if armed
-    line(gt, 0, zero, 0)
-    line(gt, 0, disarm, 0)
-    line(zero, 0, mom, 0)               # release the pad (outputs 0)
-    line(disarm, 0, gt, 0)
-    pk = obj("pak 0 0", [x0, 410, 50, 22], nin=2, nout=1)
-    orx = obj("expr $f1 || $f2", [x0, 430, 90, 22], nin=2, nout=1)
-    line(tii, 1, pk, 0)                 # right (fires first): value to engine
-    line(lat, 0, pk, 1)
-    line(pk, 0, orx, 0)
-    pr_ = obj(f"prepend {name}", [x0, 450, 100, 22])
-    line(orx, 0, pr_, 0)
-    line(pr_, 0, gen, 0)
-    px[0] += 130
-
-
-perf("hold", "HOLD", 22)
-perf("drive", "DRIVE", 48)
-perf("tape_stop", "STOP", 74)
-dial("drive_db", "Drive Amount", "DriveAmt", 0, 24, 12, [X, 100], unit=4)
-dial("stop_time", "Stop Time", "StopT", 0.05, 8, 1.0, [X + 48, 100], unit=1, units="s", expo=2.0)
-dial("start_time", "Start Time", "StartT", 0.05, 8, 0.4, [X + 96, 100], unit=1, units="s", expo=2.0)
-
-# -- filters
-X = 770
-comment("FILTERS", [X, 4, 60, 16])
-dial("fb_hp_hz", "Repeat HP", "Rep HP", 10, 2000, 10, [X, 22], unit=3, expo=3.0)
-dial("fb_lp_hz", "Repeat LP", "Rep LP", 500, 20000, 20000, [X + 48, 22], unit=3, expo=3.0)
-dial("fb_res", "Repeat Resonance", "Res", 0, 1, 0, [X + 96, 22])
-dial("echo_hp_hz", "Echo HP", "Echo HP", 10, 2000, 10, [X, 74], unit=3, expo=3.0)
-dial("echo_lp_hz", "Echo LP", "Echo LP", 500, 20000, 20000, [X + 48, 74], unit=3, expo=3.0)
-dial("dry_treble_db", "Dry Treble", "DryTreb", -16, 16, 0, [X + 96, 74], unit=4)
-
-# -- output
-X = 920
-comment("OUTPUT", [X, 4, 60, 16])
-dial("dry", "Dry Level", "Dry", 0, 1, 0.5, [X, 22])
-dial("echo", "Echo Volume", "Echo", 0, 1.5, 0.5, [X + 48, 22])
-dial("out_db", "Output Level", "Output", -36, 12, 0, [X, 74], unit=4)
-for ch in (0, 1):
-    m = box("live.meter~", [px[0] + 20 * ch, 520, 10, 60], pres=[X + 100 + 9 * ch, 22, 6, 100],
-            nin=1, nout=1, otype=["list"])
-    line(gen, ch, m, 0)
-
-# -- output protection (v0.2.1, P0)
-toggle_text("protect", "Output Protection", "Protect", "PROTECT", [X, 126], [56, 16], init=1)
-dial("ceiling_db", "Output Ceiling", "Ceiling", -12, 0, -0.3, [X + 48, 74], unit=4)
-gr_sn = obj("snapshot~ 40", [900, 460, 80, 22], nin=2, nout=1, otype=["float"])
-gr_db = obj("atodb", [900, 485, 50, 22], nin=1, nout=1, otype=[""])
-gr_neg = obj("* -1.", [900, 505, 40, 22], nin=2, nout=1, otype=["float"])
-gr_fl = box("flonum", [900, 530, 50, 22], pres=[X, 146, 36, 16], nin=1, nout=2,
-            otype=["", "bang"], format=6, numdecimalplaces=1, fontsize=10.0)
-line(gen, 6, gr_sn, 0)
-line(gr_sn, 0, gr_db, 0)
-line(gr_db, 0, gr_neg, 0)
-line(gr_neg, 0, gr_fl, 0)
-comment("GR dB", [X + 36, 147, 34, 14], size=8.0)
-ov_pk = obj("peakamp~ 150", [1000, 460, 80, 22], nin=2, nout=1, otype=["float"])
-ov_cmp = obj("> 0.5", [1000, 485, 40, 22], nin=2, nout=1, otype=["int"])
-ov_led = box("led", [1000, 510, 18, 18], pres=[X + 70, 147, 12, 12], nin=1, nout=1, otype=["int"],
-             oncolor=[1.0, 0.2, 0.1, 1.0])
-line(gen, 7, ov_pk, 0)
-line(ov_pk, 0, ov_cmp, 0)
-line(ov_cmp, 0, ov_led, 0)
-comment("OVER", [X + 82, 146, 30, 14], size=8.0)
-
-# -- machine / engine settings
-X = 1050
-comment("ENGINE", [X, 4, 60, 16])
-tab("slider_mode", "Slider Mechanism", "Mech", ["HEAD", "SPEED"], 0, [X, 22], [90, 16])
-tab("stereo", "Stereo Mode", "Stereo", ["MONO", "DUAL"], 0, [X, 42], [90, 16])
-dial("head_slew", "Head Speed Limit", "HeadSpd", 0.05, 8, 3, [X, 62])
-dial("transition_ms", "Mode Transition", "Trans", 1, 4000, 250, [X + 48, 62], unit=2, expo=3.0)
-dial("hold_fb", "Hold Feedback", "HoldFB", 0.9, 1.05, 1.0, [X, 112])
-dial("head_spacing_ms", "Head Spacing (speed mode)", "Spacing", 20, 1000, 300, [X + 48, 112], unit=2)
-toggle_text("drive_fb", "Drive Feedback Path", "DriveFB", "DRV FB", [X + 96, 22], [44, 16])
-toggle_text("limiter", "Record Limiter", "Limiter", "LIMIT", [X + 96, 42], [44, 16], init=1)
-tab("loop_type", "Tape Loop", "Loop", ["SHORT", "LONG"], 1, [X + 96, 62], [52, 16])
-dial("splice", "Splice", "Splice", 0, 1, 0.25, [X + 96, 82])
-
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "layout_hh.py")).read())
 # parameter registry, as real devices carry it ({box id: [longname, shortname, 0]})
 registry = {}
 for b in boxes:
@@ -373,7 +115,6 @@ for b in boxes:
     if b["box"].get("parameter_enable") and v:
         registry[b["box"]["id"]] = [v["parameter_longname"], v["parameter_shortname"], 0]
 registry["inherited_shortname"] = 1
-DEVW = 1200.0
 
 patcher = {
     "patcher": {
@@ -382,7 +123,7 @@ patcher = {
         "default_fontsize": 10.0, "default_fontface": 0, "default_fontname": "Arial",
         "openrect": [0.0, 0.0, DEVW, 169.0],
         "gridonopen": 1, "gridsize": [8.0, 8.0], "devicewidth": DEVW,
-        "description": "Echolivity H&H Echo Unit — tape echo, v0.2.1 (M107-based)",
+        "description": "Echolivity H&H Echo Unit — tape echo, v0.2.2-dev (M107-based)",
         "parameters": registry,
         "boxes": boxes, "lines": lines, "dependency_cache": [],
         "latency": 0, "is_mpe": 0, "minimum_live_version": "", "minimum_max_version": "",
@@ -397,15 +138,16 @@ patcher = {
 }
 
 os.makedirs(os.path.join(ROOT, "devices"), exist_ok=True)
+OUTNAME = os.environ.get("HH_DEVICE_NAME", "Echolivity_HH_v0.2.2-dev")
 js = json.dumps(patcher, indent=1)
-open(os.path.join(ROOT, "devices", "Echolivity_HH.maxpat"), "w").write(js)
+open(os.path.join(ROOT, "devices", OUTNAME + ".maxpat"), "w").write(js)
 
 # .amxd container: 'ampf' chunk (device type 'aaaa' = audio effect), 'meta', 'ptch'
 body = js.encode("utf-8") + b"\x00"
 amxd = (b"ampf" + struct.pack("<I", 4) + b"aaaa" +
         b"meta" + struct.pack("<I", 4) + b"\x00\x00\x00\x00" +
         b"ptch" + struct.pack("<I", len(body)) + body)
-open(os.path.join(ROOT, "devices", "Echolivity_HH.amxd"), "wb").write(amxd)
+open(os.path.join(ROOT, "devices", OUTNAME + ".amxd"), "wb").write(amxd)
 
 nparams = sum(1 for b in boxes if b["box"].get("parameter_enable"))
 print(f"boxes {len(boxes)}, lines {len(lines)}, Live parameters {nparams}")

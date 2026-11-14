@@ -1,5 +1,5 @@
 """
-Echolivity H&H — Python/Numba reference model of the tape engine (v0.2.1).
+Echolivity H&H — Python/Numba reference model of the tape engine (v0.2.2-dev).
 
 Statement-for-statement mirror of dsp/hh_core.genexpr. Change both together.
 
@@ -244,6 +244,12 @@ def process(xl, xr, P, sr, seed=1):
     wow_rnd = 0.0
     fl_rnd = 0.0
 
+    SM_IDX = np.array([0, 1, 2, 3, 14, 15, 16, 17, 18, 19, 20, 22, 24, 34, 38, 41, 44, 46, 32, 33, 35, 36], dtype=np.int64)
+    SM_LOG = np.array([False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True, True, True, True], dtype=np.bool_)
+    SM_N = SM_IDX.shape[0]
+    sm_state = np.zeros(SM_N)
+    smv = P[0].copy()
+    sm_init = False
     a_n = 1.0 - np.exp(-2.0 * np.pi * min(10000.0, 0.49 * sr) / sr)
     noise_norm = 1.0 / np.sqrt((1.0 / 3.0) * a_n / (2.0 - a_n))
 
@@ -310,6 +316,30 @@ def process(xl, xr, P, sr, seed=1):
             T = 60.0 / bpm * beats * max(Pn[9], 1.0) + Pn[10] * 0.001
         T = min(max(T, T_MIN), T_MAX)
 
+        # ---------------- parameter smoothing (v0.2.2-dev) --------------
+        # mirrors psmooth()/fsmooth() in the GenExpr: first sample snaps, exact
+        # snap onto a reached target, frequencies on a log scale
+        a_ps = 1.0 - np.exp(-1.0 / (0.010 * sr))
+        for k in range(SM_N):
+            idx = SM_IDX[k]
+            tv = Pn[idx]
+            if SM_LOG[k]:
+                lt = np.log(tv)
+                if not sm_init:
+                    sm_state[k] = lt
+                sm_state[k] = sm_state[k] + a_ps * (lt - sm_state[k])
+                if abs(lt - sm_state[k]) <= 0.000000001:
+                    sm_state[k] = lt
+                smv[idx] = tv if sm_state[k] == lt else np.exp(sm_state[k])
+            else:
+                if not sm_init:
+                    sm_state[k] = tv
+                sm_state[k] = sm_state[k] + a_ps * (tv - sm_state[k])
+                if abs(tv - sm_state[k]) <= 0.000000001 * max(1.0, abs(tv)):
+                    sm_state[k] = tv
+                smv[idx] = sm_state[k]
+        sm_init = True
+
         if mode != prev_mode:
             if prev_mode >= 0.0:
                 trans_left = Pn[31] * 0.001 * sr * 3.0
@@ -342,9 +372,9 @@ def process(xl, xr, P, sr, seed=1):
         wow_rnd += (1.0 - np.exp(-2.0 * np.pi * 0.5 / sr)) * ((np.random.random() * 2.0 - 1.0) * 3.0 - wow_rnd)
         fl_rnd += (1.0 - np.exp(-2.0 * np.pi * 20.0 / sr)) * ((np.random.random() * 2.0 - 1.0) * 2.0 - fl_rnd)
         loop_ph = loop_pos / loop_cells
-        wf = Pn[19] * 0.006 * (0.7 * np.sin(2.0 * np.pi * wow_ph) + 0.3 * wow_rnd) \
-            + Pn[20] * 0.002 * (0.5 * np.sin(2.0 * np.pi * fl_ph) + 0.2 * np.sin(2.0 * np.pi * fl2_ph) + 0.3 * fl_rnd) \
-            + Pn[20] * 0.0005 * np.sin(2.0 * np.pi * loop_ph)   # loop-synchronous tension variation
+        wf = smv[19] * 0.006 * (0.7 * np.sin(2.0 * np.pi * wow_ph) + 0.3 * wow_rnd) \
+            + smv[20] * 0.002 * (0.5 * np.sin(2.0 * np.pi * fl_ph) + 0.2 * np.sin(2.0 * np.pi * fl2_ph) + 0.3 * fl_rnd) \
+            + smv[20] * 0.0005 * np.sin(2.0 * np.pi * loop_ph)   # loop-synchronous tension variation
 
         v_base = 1.0
         d = T_s2
@@ -356,7 +386,7 @@ def process(xl, xr, P, sr, seed=1):
             d_head += min(max(T_s2 - d_head, -hs), hs)
             d = d_head
         else:
-            d = Pn[38] * 0.001 * sr
+            d = smv[38] * 0.001 * sr
             d_head = T_s2
             v_base = min(max(d / T_s2, V_MIN), V_MAX)
         d = min(max(d, 8.0), N - 16.0)
@@ -377,22 +407,22 @@ def process(xl, xr, P, sr, seed=1):
         sp_w = 0.004 * sr
         sp_g = 1.0
         if sp_pos < sp_w:
-            sp_g = 1.0 - Pn[44] * 0.7 * 0.5 * (1.0 - np.cos(2.0 * np.pi * sp_pos / sp_w))
+            sp_g = 1.0 - smv[44] * 0.7 * 0.5 * (1.0 - np.cos(2.0 * np.pi * sp_pos / sp_w))
         loop_pos = (loop_pos + v_eff) % loop_cells
 
         # ---------------- gates & coefficients ----------------
         a10 = 1.0 - np.exp(-1.0 / (0.010 * sr))
         hold_s += a10 * (Pn[21] - hold_s)
         drive_s += a10 * (Pn[23] - drive_s)
-        drive_gain = 10.0 ** (drive_s * Pn[24] / 20.0)
-        g_t = 2.12 * 4.0 ** (2.0 * (Pn[17] - 0.5))
+        drive_gain = 10.0 ** (drive_s * smv[24] / 20.0)
+        g_t = 2.12 * 4.0 ** (2.0 * (smv[17] - 0.5))
         gp = min(1.0, v_eff / 0.15) * sp_g
         fc_rec = min(18000.0, 0.42 * v_eff * sr)
         fc_tape = min(max(TAPE_LP * v_eff, 50.0), 0.45 * sr)
-        fb_amt = Pn[14] * (1.0 - hold_s) + Pn[22] * hold_s
-        q_fb = 0.707 + Pn[34] * 6.0
-        in_g = 10.0 ** (Pn[0] / 20.0)
-        noise_g = 10.0 ** (Pn[18] / 20.0) * noise_norm if Pn[18] > -119.0 else 0.0
+        fb_amt = smv[14] * (1.0 - hold_s) + smv[22] * hold_s
+        q_fb = 0.707 + smv[34] * 6.0
+        in_g = 10.0 ** (smv[0] / 20.0)
+        noise_g = 10.0 ** (smv[18] / 20.0) * noise_norm if smv[18] > -119.0 else 0.0
         a_att = 1.0 - np.exp(-1.0 / (LIM_ATT * sr))
         a_rel = 1.0 - np.exp(-1.0 / (LIM_REL * sr))
 
@@ -429,8 +459,8 @@ def process(xl, xr, P, sr, seed=1):
             y = _hp1(st, o + 3, y, CPL_HP, sr)
             y = y + _lp1(st, o + 4, np.random.random() * 2.0 - 1.0, 10000.0, sr) * noise_g
             # --- REPEAT (pre-tone, M107) with performance filters
-            l2, b2, fh = _svf(st, o + 5, y, Pn[32], q_fb, sr)
-            fl, b3, h3 = _svf(st, o + 6, fh, Pn[33], q_fb, sr)
+            l2, b2, fh = _svf(st, o + 5, y, smv[32], q_fb, sr)
+            fl, b3, h3 = _svf(st, o + 6, fh, smv[33], q_fb, sr)
             fbmax = max(fbmax, abs(fl * fb_amt))
             fbs = fl * fb_amt * guard
             if Pn[25] > 0.5:
@@ -456,14 +486,14 @@ def process(xl, xr, P, sr, seed=1):
             lr, br, hr = _svf(st, o + 10, u, fc_rec, 0.707, sr)
             rec[ch] = lr
             # --- echo output: Baxandall Bass/Treble (outside the loop), perf filters
-            e = _lowshelf(st, o + 11, y, Pn[15] * 1.5, BASS_FC, 100.0, sr)
-            e = _highshelf(st, o + 12, e, Pn[16] * (18.0 / 14.0), TREB_FC, 10000.0, sr)
-            e1l, e1b, e1h = _svf(st, o + 13, e, Pn[35], 0.707, sr)
-            e2l, e2b, e2h = _svf(st, o + 14, e1h, Pn[36], 0.707, sr)
+            e = _lowshelf(st, o + 11, y, smv[15] * 1.5, BASS_FC, 100.0, sr)
+            e = _highshelf(st, o + 12, e, smv[16] * (18.0 / 14.0), TREB_FC, 10000.0, sr)
+            e1l, e1b, e1h = _svf(st, o + 13, e, smv[35], 0.707, sr)
+            e2l, e2b, e2h = _svf(st, o + 14, e1h, smv[36], 0.707, sr)
             ech[ch] = _dcblock(st, o + 15, e2l, sr)
             # --- dry path: dry Treble (IC7)
             xd = min(max((xlt if ch == 0 else xrt) * in_g, -17.8), 17.8)   # dry stays stereo
-            dryo[ch] = _highshelf(st, o + 16, xd, Pn[41] * (20.0 / 16.0), DTREB_FC, 10000.0, sr)
+            dryo[ch] = _highshelf(st, o + 16, xd, smv[41] * (20.0 / 16.0), DTREB_FC, 10000.0, sr)
 
         if Pn[37] < 0.5:
             rec[1] = rec[0]
@@ -487,11 +517,11 @@ def process(xl, xr, P, sr, seed=1):
             p -= N
             r_prev -= N
 
-        og = 10.0 ** (Pn[3] / 20.0)
-        o1 = _fixnan((dryo[0] * Pn[1] + ech[0] * Pn[2]) * og)
-        o2 = _fixnan((dryo[1] * Pn[1] + ech[1] * Pn[2]) * og)
+        og = 10.0 ** (smv[3] / 20.0)
+        o1 = _fixnan((dryo[0] * smv[1] + ech[0] * smv[2]) * og)
+        o2 = _fixnan((dryo[1] * smv[1] + ech[1] * smv[2]) * og)
         # ---------------- OUTPUT PROTECTION (after dry/wet sum) ----------
-        c_lin = 10.0 ** (Pn[46] / 20.0)
+        c_lin = 10.0 ** (smv[46] / 20.0)
         thr = c_lin * 0.944061
         pk = max(abs(o1), abs(o2))
         over_out[t] = 1.0 if pk > thr else 0.0
