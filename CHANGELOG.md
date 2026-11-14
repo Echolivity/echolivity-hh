@@ -1,6 +1,7 @@
 # Changelog
 
 ## v0.2.2-dev (unreleased, 2026-11-14)
+- UI palette "el" (default): black/silver with electroluminescent-green legends, inspired by HH's 1970s EL-lit panels; previous palette kept as "ember".
 - DRY MONO (new parameter, default off): sums the dry path to mono like the original (M107: two inputs into one mix, one output); 10 ms crossfade when switched. With Stereo MONO the device output is fully mono. Tests DM01–DM04, GX12.
 - Hardware slider: new parameters Slider Taper (WIDE/HW, default HW), Slider Position (0–100 %, linear), Slider Min (60 ms) and Slider Max (600 ms) — range is an estimate, M107 has none for the tape unit. WIDE keeps the v0.2.1 Delay Slider. UI swaps the hero slider with the taper. Tests HW01–HW06, GX11. Pre-existing tests run in WIDE to keep their meaning.
 - Fix (found by P05 after the modulation change): Output Ceiling removed from parameter smoothing — a lagging ceiling let output exceed a newly lowered ceiling by up to 3.7 dB for a few ms. 21 controls are smoothed.

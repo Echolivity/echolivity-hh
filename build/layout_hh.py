@@ -11,13 +11,29 @@ def rgba(h, a=1.0):
     return [int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4)] + [a]
 
 
-C = {
-    "bg": rgba("#16181b"), "plate": rgba("#24272b"), "plate_edge": rgba("#3a3e44"),
-    "legend": rgba("#cdbb92"), "word": rgba("#efe6d2"), "dim": rgba("#8d8778"),
-    "amber": rgba("#e39b3c"), "red": rgba("#e0583c"), "teal": rgba("#5db3a5"),
-    "cream": rgba("#e9dfc6"), "track": rgba("#3b4046"), "ctrl": rgba("#30343a"),
-    "lcd_bg": rgba("#0b0c0e"), "lcd": rgba("#f0a640"), "text": rgba("#cfc8b8"), "ink": rgba("#121315"),
+# Palettes. "el" (default) is inspired by HH's 1970s units: black / silver finish and
+# the electroluminescent panel that lights the legends a blue-green behind perspex.
+# Original artwork; no HH logo, legends or panel graphics are copied.
+# "ember" is the earlier Echolivity draft, kept for comparison (HH_PALETTE=ember).
+PALETTES = {
+    "el": {
+        "bg": "#0c100f", "plate": "#161d1c", "plate_edge": "#46504f",      # smoked perspex over black, silver trim
+        "legend": "#79e8bd", "word": "#dfe5e7", "dim": "#6c7a76",          # EL-green legends, silver wordmark
+        "amber": "#6ff0b4", "red": "#b4ffe0", "teal": "#56d3c6",           # section accents: EL green / bright / blue-green
+        "cream": "#c3cbd0", "track": "#25302d", "ctrl": "#1d2524",         # brushed-silver controls, dark knob tracks
+        "lcd_bg": "#040706", "lcd": "#8dffca", "text": "#b7c6c1", "ink": "#06100c",
+        "meter_cold": "#4fe0a0", "meter_warm": "#e8b84a", "alarm": "#ff4d3a",
+    },
+    "ember": {
+        "bg": "#16181b", "plate": "#24272b", "plate_edge": "#3a3e44",
+        "legend": "#cdbb92", "word": "#efe6d2", "dim": "#8d8778",
+        "amber": "#e39b3c", "red": "#e0583c", "teal": "#5db3a5",
+        "cream": "#e9dfc6", "track": "#3b4046", "ctrl": "#30343a",
+        "lcd_bg": "#0b0c0e", "lcd": "#f0a640", "text": "#cfc8b8", "ink": "#121315",
+        "meter_cold": "#5db3a5", "meter_warm": "#e39b3c", "alarm": "#e0583c",
+    },
 }
+C = {k: rgba(v) for k, v in PALETTES[os.environ.get("HH_PALETTE", "el")].items()}
 DEVW = 1216.0
 px = [120]  # patching x cursor
 
@@ -116,7 +132,7 @@ def lcd(src_outlet, pres, fmt_dec=1, size=13.0, patch=(20, 460)):
 
 def meter(src, src_outlet, pres):
     m = box("live.meter~", [px[0], 520, 10, 60], pres=pres, nin=1, nout=1, otype=["list"],
-            coldcolor=C["teal"], warmcolor=C["amber"], hotcolor=C["red"], overloadcolor=C["red"],
+            coldcolor=C["meter_cold"], warmcolor=C["meter_warm"], hotcolor=C["alarm"], overloadcolor=C["alarm"],
             bgcolor=C["lcd_bg"])
     line(src, src_outlet, m, 0)
     return m
@@ -349,7 +365,7 @@ label("GR", [X + 90, 147, 16, 12], size=7.0)
 ov_pk = obj("peakamp~ 150", [1000, 460, 80, 22], nin=2, nout=1, otype=["float"])
 ov_cmp = obj("> 0.5", [1000, 485, 40, 22], nin=2, nout=1, otype=["int"])
 ov_led = box("led", [1000, 510, 18, 18], pres=[X + 110, 148, 11, 11], nin=1, nout=1, otype=["int"],
-             oncolor=C["red"], offcolor=C["track"], ignoreclick=1)
+             oncolor=C["alarm"], offcolor=C["track"], ignoreclick=1)
 line(gen, 7, ov_pk, 0)
 line(ov_pk, 0, ov_cmp, 0)
 line(ov_cmp, 0, ov_led, 0)

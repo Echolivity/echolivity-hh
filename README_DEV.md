@@ -86,3 +86,14 @@ The original is mono throughout: Input 1 and Input 2 are summed into one mixing 
 - **Fully mono, like the original:** DRY MONO on + Stereo MONO. L and R are then bit-identical (DM03).
 - Off by default so the device doesn't collapse a stereo source when you insert it. On a return track with Dry at 0 it makes no difference.
 - Tests: `tests/test_dry_mono.py` → `tests/DRY_MONO_REPORT.md` (4/4); GX12.
+
+## 8. Colour palette inspired by the original (v0.2.2-dev)
+HH's 1970s units came in black / silver, and their front panels were lit from behind by an **electroluminescent panel**: the legends glow green (often described as blue-green) through perspex. The Multi Echo and the Echo Unit both had it ("Electro Luminescent Front Panel", "backlight of control panel" in dealer listings); the IC100 amplifiers made it famous.
+
+The default palette **"el"** follows that:
+- near-black chassis, with smoked-perspex section plates edged in silver;
+- EL-green legends, readouts and value arcs (blue-green for the filters);
+- brushed-silver toggles and wordmark;
+- warm amber and red kept only for meters and the OVER lamp.
+
+It's original artwork: no HH logo, legend text or panel graphics are copied. The earlier warm palette is kept as **"ember"** (`HH_PALETTE=ember python3 build/build_device.py`). The exact EL hue of the Echo Unit isn't documented; it's taken from descriptions of HH's EL panels.
