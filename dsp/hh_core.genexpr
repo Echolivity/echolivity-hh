@@ -288,6 +288,14 @@ Param loop_type(1, min=0, max=1);
 Param splice(0.25, min=0, max=1);
 Param protect(1, min=0, max=1);
 Param ceiling_db(-0.3, min=-12, max=0);
+// hardware slider (v0.2.2-dev). HARDWARE: delay is LINEAR in slider position, like a
+// replay head on a bar at constant tape speed (distance / 30.5 cm/s). Range is an
+// ESTIMATE (60–600 ms): M107 gives no delay range for the tape Echo Unit.
+// WIDE: the v0.2.1 behaviour (Delay Slider in ms, 2 ms – 4 s).
+Param slider_taper(1, min=0, max=1);
+Param slider_pos(0.5, min=0, max=1);
+Param slider_min_ms(60, min=2, max=2000);
+Param slider_max_ms(600, min=2, max=4000);
 
 // ---------- state -----------------------------------------------------
 History p(0);
@@ -409,6 +417,11 @@ tap_prev = tap;
 
 // ================= TARGET DELAY TIME ==================================
 T = manual_ms * 0.001;
+if (slider_taper > 0.5) {
+	s_lo = min(slider_min_ms, slider_max_ms);
+	s_hi = max(slider_min_ms, slider_max_ms);
+	T = (s_lo + slider_pos * (s_hi - s_lo)) * 0.001;
+}
 if (mode < 1.5) {
 	use_bpm = max(bpm, 20);
 	dv_idx = floor(sync_div + 0.5);
@@ -467,7 +480,8 @@ sm_fb_res = psmooth(fb_res, ck_ps);
 sm_head_spacing_ms = psmooth(head_spacing_ms, ck_ps);
 sm_dry_treble_db = psmooth(dry_treble_db, ck_ps);
 sm_splice = psmooth(splice, ck_ps);
-sm_ceiling_db = psmooth(ceiling_db, ck_ps);
+// ceiling_db is NOT smoothed: the protection stage smooths its own gain, and a
+// lagging ceiling would let output exceed a newly lowered ceiling (test P05)
 sm_fb_hp_hz = fsmooth(fb_hp_hz, ck_ps);
 sm_fb_lp_hz = fsmooth(fb_lp_hz, ck_ps);
 sm_echo_hp_hz = fsmooth(echo_hp_hz, ck_ps);
@@ -706,9 +720,9 @@ o2 = fixnan((dry1 * sm_dry + ech1 * sm_echo) * og);
 // 10 ms hold, 0.5 ms gain attack, 150 ms release) into a soft clip that
 // only acts between the limiter threshold (ceiling - 0.5 dB) and the
 // ceiling. Below threshold the signal passes bit-exact. Sample-peak only.
-if (sm_ceiling_db != ck_ckey) {
-	ck_cl = pow(10, sm_ceiling_db / 20);
-	ck_ckey = sm_ceiling_db;
+if (ceiling_db != ck_ckey) {
+	ck_cl = pow(10, ceiling_db / 20);
+	ck_ckey = ceiling_db;
 }
 c_lin = ck_cl;
 thr = c_lin * 0.944061;

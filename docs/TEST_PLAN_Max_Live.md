@@ -43,6 +43,7 @@ Test environment to record: OS + version, CPU, RAM, audio interface + driver, Li
 | L20 | Over / GR display | Push Output +12 dB with Repeat 1.2 | OVER lamp lights; GR readout shows dB; output never exceeds the Ceiling (Live peak meter) | Screenshot |
 | L21 | LFO / modulator mapping (dev) | Map Live's LFO (Map button) to Echo Repeat, Echo Volume, Output, Echo LP and Delay Slider in turn; rate 0.5–8 Hz, full depth | Each control visibly modulates, its base value stays adjustable, no zipper/stepping noise, no clicks | Recording + notes |
 | L22 | Panel UI (dev) | Open the device in Live with the default and one dark/light Live theme | Layout matches `docs/ui_preview_v0.2.2-dev.png` in arrangement; text legible; no clipped labels; colours acceptable under the theme | Screenshots |
+| L23 | Hardware slider (dev) | Switch Slider Taper WIDE ↔ HW; drag the slider; map Live's LFO to Slider Position; map a MIDI fader | The matching slider is shown (thispatcher script show/hide works in a Live device); delay readout follows 60–600 ms linearly; LFO produces smooth, steady pitch sweeps; no stuck/hidden-both state after reopening the set | Video + screenshots |
 
 ## A — listening tests (Live 12)
 

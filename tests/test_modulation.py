@@ -11,6 +11,15 @@ from scipy.signal import butter, sosfilt
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "reference"))
 from tape_engine import process, default_params, IDX, PARAMS
+
+_dp_hw = default_params
+
+
+def default_params(n):
+    # tests written before the HARDWARE slider drive the WIDE "Delay Slider" (manual_ms)
+    P = _dp_hw(n)
+    P[:, IDX["slider_taper"]] = 0
+    return P
 V021 = os.environ.get("ECHOLIVITY_V021_REF", os.path.join(HERE, "..", "..", "echolivity_v0.2.1", "reference"))
 SR = 48000.0
 RES = []

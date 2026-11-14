@@ -165,8 +165,20 @@ line(cnt, 0, pr, 0)
 line(pr, 0, gen, 0)
 px[0] += 118
 
+# Two sliders share the hero position; the Slider Taper switch (ENGINE) shows one:
+#  HARDWARE: "Slider Position" 0–100 %, LINEAR -> Slider Min..Max (default 60–600 ms, estimate)
+#  WIDE:     "Delay Slider" in ms, 2 ms – 4 s on a curve (v0.2.1 behaviour)
+# Both stay mappable (LFO, automation, MIDI) whichever one is visible.
+slp = box("live.slider", [px[0], 300, 300, 30], pres=[X + 6, 54, 318, 34], nin=1, nout=2,
+          otype=["", "float"], parameter_enable=1, varname="slider_pos", orientation=1, showname=0,
+          slidercolor=C["track"], activeslidercolor=C["amber"], tribordercolor=C["word"], trioncolor=C["word"],
+          tricolor=C["word"], textcolor=C["text"], fontsize=9.0,
+          saved_attribute_attributes=pval("Slider Position", "Slider", 0, 0.0, 100.0, 50.0, 5, modmode=3))
+slp_scale = obj("* 0.01", [px[0], 340, 50, 22], nin=2, nout=1, otype=["float"])
+line(slp, 0, slp_scale, 0)
+wire_param(slp_scale, "slider_pos")
 sl = box("live.slider", [px[0], 300, 300, 30], pres=[X + 6, 54, 318, 34], nin=1, nout=2,
-         otype=["", "float"], parameter_enable=1, varname="manual_ms", orientation=1, showname=0,
+         otype=["", "float"], parameter_enable=1, varname="manual_ms", orientation=1, showname=0, hidden=1,   # default taper is HARDWARE
          slidercolor=C["track"], activeslidercolor=C["amber"], tribordercolor=C["word"], trioncolor=C["word"],
          tricolor=C["word"], textcolor=C["text"], fontsize=9.0,
          saved_attribute_attributes=pval("Delay Slider", "Delay", 0, 2, 4000, 350, 2, expo=2.5, modmode=3))
@@ -353,4 +365,17 @@ dial("head_slew", "Head Speed Limit", "HeadSpd", 0.05, 8, 3, [X + 2, 90], size=(
 dial("transition_ms", "Mode Transition", "Trans", 1, 4000, 250, [X + 40, 90], unit=2, expo=3.0, size=(36, 44), accent=C["dim"])
 dial("hold_fb", "Hold Feedback", "HoldFB", 0.9, 1.05, 1.0, [X + 78, 90], size=(36, 44), accent=C["dim"])
 dial("head_spacing_ms", "Head Spacing (speed mode)", "Spacing", 20, 1000, 300, [X + 116, 90], unit=2, size=(36, 44), accent=C["dim"])
-label("original Echolivity design", [X + 6, 152, 140, 12], size=6.5)
+tap_ = tab("slider_taper", "Slider Taper", "Taper", ["WIDE", "HW"], 1, [X + 102, 48], [46, 16], accent=C["amber"], fontsize=7.5)
+# show the slider that matches the taper (UI only; both parameters remain mappable)
+tsel = obj("sel 0 1", [1500, 300, 60, 22], nin=3, nout=3, otype=["bang", "bang", ""])
+show_wide = msg("script show manual_ms, script hide slider_pos", [1500, 330, 280, 22])
+show_hw = msg("script show slider_pos, script hide manual_ms", [1500, 360, 280, 22])
+tp = obj("thispatcher", [1500, 390, 80, 22], nin=1, nout=2, otype=["", ""])
+line(tap_, 0, tsel, 0)
+line(tsel, 0, show_wide, 0)
+line(tsel, 1, show_hw, 0)
+line(show_wide, 0, tp, 0)
+line(show_hw, 0, tp, 0)
+label("SLIDER ms", [X + 4, 149, 46, 12], size=7.0, color=C["legend"])
+numbox("slider_min_ms", "Slider Min", "SlideMin", 2, 2000, 60, [X + 50, 147], size=(44, 15), unit=2)
+numbox("slider_max_ms", "Slider Max", "SlideMax", 2, 4000, 600, [X + 100, 147], size=(48, 15), unit=2)

@@ -1,7 +1,9 @@
 # Changelog
 
 ## v0.2.2-dev (unreleased, 2026-11-14)
-- Modulation safety: per-sample smoothing (10 ms, log-scale for frequencies) of 22 continuous controls in `dsp/hh_core.genexpr` and the reference engine; static settings bit-identical to v0.2.1 (MOD01); stepping noise under LFO modulation −55…−64 dB → ≤ −99 dB (MOD02). All parameters explicitly Automated and Stored; continuous ones Modulation Mode Additive. Tests GX10, MOD01–MOD03.
+- Hardware slider: new parameters Slider Taper (WIDE/HW, default HW), Slider Position (0–100 %, linear), Slider Min (60 ms) and Slider Max (600 ms) — range is an estimate, M107 has none for the tape unit. WIDE keeps the v0.2.1 Delay Slider. UI swaps the hero slider with the taper. Tests HW01–HW06, GX11. Pre-existing tests run in WIDE to keep their meaning.
+- Fix (found by P05 after the modulation change): Output Ceiling removed from parameter smoothing — a lagging ceiling let output exceed a newly lowered ceiling by up to 3.7 dB for a few ms. 21 controls are smoothed.
+- Modulation safety: per-sample smoothing (10 ms, log-scale for frequencies) of 21 continuous controls (22 originally; see the Output Ceiling fix above) in `dsp/hh_core.genexpr` and the reference engine; static settings bit-identical to v0.2.1 (MOD01); stepping noise under LFO modulation −55…−64 dB → ≤ −99 dB (MOD02). All parameters explicitly Automated and Stored; continuous ones Modulation Mode Additive. Tests GX10, MOD01–MOD03.
 - Panel UI: `build/layout_hh.py` (new styled layout), `build/render_preview.py` (approximate preview). Builder writes `devices/Echolivity_HH_v0.2.2-dev.*`. TAP button relabelled "TAP TEMPO" (parameter name unchanged).
 - `log()` added to the GenExpr transpiler and C generator.
 - `dsp/hh_core.genexpr`: coefficient caching (svf, lp1, zp1, shelves, tapesat; main-body sample-rate, gain and time-constant terms). Bit-identical output to v0.2.1 (GX01–GX09; C-build byte comparison). About 40 % less CPU in the C proxy.

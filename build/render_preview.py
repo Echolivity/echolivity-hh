@@ -62,7 +62,7 @@ def text(xy, s, f, fill, anchor="la"):
     d.text((xy[0] * S, xy[1] * S), s, font=f, fill=fill, anchor=anchor)
 
 
-boxes = [b["box"] for b in p["boxes"] if b["box"].get("presentation")]
+boxes = [b["box"] for b in p["boxes"] if b["box"].get("presentation") and not b["box"].get("hidden")]
 for b in boxes:
     cls = b["maxclass"]
     r = b["presentation_rect"]
@@ -96,8 +96,9 @@ for b in boxes:
         t = norm(init, v["parameter_mmin"], v["parameter_mmax"], v.get("parameter_exponent", 1.0))
         d.rectangle(R([x, y, w * t, h]), fill=col(b.get("activeslidercolor")))
         d.polygon([((x + w * t) * S, (y + h) * S), ((x + w * t - 5) * S, (y + h + 0) * S - 7 * S), ((x + w * t + 5) * S, (y + h) * S - 7 * S)], fill=col(b.get("tricolor")))
-        text((x + w - 4, y + h / 2), fmt(init, 2), font(11, True), (20, 20, 20, 255), "rm")
-        text((x + 5, y + h / 2), "DELAY", font(9, True), (20, 20, 20, 230), "lm")
+        val = f"{init:.0f} %" if v.get("parameter_unitstyle") == 5 else fmt(init, 2)
+        text((x + w - 4, y + h / 2), val, font(11, True), (20, 20, 20, 255), "rm")
+        text((x + 5, y + h / 2), "SLIDER" if v.get("parameter_unitstyle") == 5 else "DELAY", font(9, True), (20, 20, 20, 230), "lm")
     elif cls == "live.tab":
         en = v["parameter_enum"]
         sw = w / len(en)

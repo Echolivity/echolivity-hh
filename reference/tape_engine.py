@@ -34,6 +34,7 @@ PARAMS = [
     ("stereo", 0), ("head_spacing_ms", 300.0), ("bar_beats", 4.0),
     ("head_slew", 3.0), ("dry_treble_db", 0.0), ("limiter", 1), ("loop_type", 1),
     ("splice", 0.25), ("protect", 1), ("ceiling_db", -0.3),
+    ("slider_taper", 1), ("slider_pos", 0.5), ("slider_min_ms", 60.0), ("slider_max_ms", 600.0),
 ]
 IDX = {name: i for i, (name, _) in enumerate(PARAMS)}
 NP = len(PARAMS)
@@ -244,8 +245,8 @@ def process(xl, xr, P, sr, seed=1):
     wow_rnd = 0.0
     fl_rnd = 0.0
 
-    SM_IDX = np.array([0, 1, 2, 3, 14, 15, 16, 17, 18, 19, 20, 22, 24, 34, 38, 41, 44, 46, 32, 33, 35, 36], dtype=np.int64)
-    SM_LOG = np.array([False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True, True, True, True], dtype=np.bool_)
+    SM_IDX = np.array([0, 1, 2, 3, 14, 15, 16, 17, 18, 19, 20, 22, 24, 34, 38, 41, 44, 32, 33, 35, 36], dtype=np.int64)
+    SM_LOG = np.array([False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True, True, True, True], dtype=np.bool_)
     SM_N = SM_IDX.shape[0]
     sm_state = np.zeros(SM_N)
     smv = P[0].copy()
@@ -290,6 +291,11 @@ def process(xl, xr, P, sr, seed=1):
 
         # ---------------- TARGET DELAY ----------------
         T = Pn[5] * 0.001
+        if Pn[47] > 0.5:
+            # HARDWARE slider: linear in position between min and max (estimated range)
+            s_lo = min(Pn[49], Pn[50])
+            s_hi = max(Pn[49], Pn[50])
+            T = (s_lo + Pn[48] * (s_hi - s_lo)) * 0.001
         if mode < 1.5:
             bpm = max(Pn[6], 20.0)
             div = int(np.floor(Pn[7] + 0.5))
@@ -521,7 +527,7 @@ def process(xl, xr, P, sr, seed=1):
         o1 = _fixnan((dryo[0] * smv[1] + ech[0] * smv[2]) * og)
         o2 = _fixnan((dryo[1] * smv[1] + ech[1] * smv[2]) * og)
         # ---------------- OUTPUT PROTECTION (after dry/wet sum) ----------
-        c_lin = 10.0 ** (smv[46] / 20.0)
+        c_lin = 10.0 ** (Pn[46] / 20.0)
         thr = c_lin * 0.944061
         pk = max(abs(o1), abs(o2))
         over_out[t] = 1.0 if pk > thr else 0.0

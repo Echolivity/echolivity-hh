@@ -23,6 +23,15 @@ sys.path.insert(0, os.path.join(ROOT, "reference"))
 from gx_transpile import GenProgram          # noqa: E402
 from tape_engine import process, default_params, IDX, PARAMS  # noqa: E402
 
+_dp_hw = default_params
+
+
+def default_params(n):
+    # tests written before the HARDWARE slider drive the WIDE "Delay Slider" (manual_ms)
+    P = _dp_hw(n)
+    P[:, IDX["slider_taper"]] = 0
+    return P
+
 GX = os.path.join(ROOT, "dsp", "hh_core.genexpr")
 RES = []
 
@@ -195,6 +204,16 @@ def main():
     P[:, IDX["manual_ms"]] = 220
     x = 0.3 * np.sin(2 * np.pi * 330 * t) * (t < 0.3) + 0.1 * np.sin(2 * np.pi * 120 * t)
     compare("GX10", "LFO-style modulation of 7 continuous controls (4 ms steps): smoothing path", P, x, x, 48000.0)
+
+    # GX11 HARDWARE slider: LFO-mapped position (4 ms steps), range change, feedback
+    n = int(48000 * 1.5)
+    t = np.arange(n) / 48000.0
+    P = quiet(_dp_hw(n))                               # device default: HARDWARE taper
+    P[:, IDX["slider_pos"]] = 0.5 + 0.45 * np.sin(2 * np.pi * 0.8 * np.floor(t / 0.004) * 0.004)
+    P[:, IDX["slider_max_ms"]] = np.where(t < 1.0, 600.0, 900.0)
+    P[:, IDX["feedback"]] = 0.7
+    x = 0.3 * np.sin(2 * np.pi * 330 * t) * (t < 0.3)
+    compare("GX11", "HARDWARE slider: LFO-mapped position + range change with feedback", P, x, x, 48000.0)
 
     out = os.path.join(HERE, "GX_REPORT.md")
     with open(out, "w") as f:

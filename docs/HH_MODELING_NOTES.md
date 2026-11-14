@@ -78,7 +78,7 @@ IN Ch1/Ch2 → IC5/IC4 (non-inv, ×2 max) → Volume 5k log ─┬→ IC6 sum �
 
 | Item | Current choice | What would replace it |
 |---|---|---|
-| **Slider range** | 2 ms – 4 s (far beyond the hardware) | Measure bar travel on a real unit: range in ms = travel / 30.5 cm/s |
+| **Slider range** | v0.2.2-dev HW taper: linear 60–600 ms (estimate; adjustable Slider Min/Max). M107 lists delay times only for the bucket-brigade Digital units (34–208 ms; Multi up to 312 ms), none for the tape Echo Unit. Upper bound from the 292 mm-wide chassis at 33 ms/cm. WIDE taper: 2 ms – 4 s | Measure bar travel on a real unit: range in ms = travel / 30.5 cm/s |
 | Tape saturation curve and headroom | tanh; limiter threshold sits about 4.5 dB below the tape ceiling at Sat 50 % | Tape MOL measurements |
 | Wow/flutter rates | 0.7 Hz wow; 8.5 / 17.3 Hz flutter; loop-rate component. Defaults low, because the motor is synchronous | Measured W&F of a serviced unit |
 | Splice dropout | 4 ms dip at each loop pass, depth 25 % × 0.7 by default | Measurement |

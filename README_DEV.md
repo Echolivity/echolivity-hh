@@ -39,9 +39,9 @@ Decisions for you:
 - go-ahead for HF-band decramping in the EQ.
 
 ## 4. LFO / modulator mapping (v0.2.2-dev)
-- All 48 controls are **"Automated and Stored"** Live parameters, so Live's LFO, Shaper and Envelope Follower, other Max for Live modulators, automation and MIDI can all map to them.
+- All controls (52 since the hardware slider) are **"Automated and Stored"** Live parameters, so Live's LFO, Shaper and Envelope Follower, other Max for Live modulators, automation and MIDI can all map to them.
 - The 29 continuous controls also have Modulation Mode = Additive, for Live's clip-envelope modulation.
-- **In the DSP:** 22 continuous controls are now smoothed per sample (10 ms; filter frequencies on a log scale). Live sends modulation as stepped control-rate values, so without this, fast LFOs on Echo Volume, Dry or Output caused stepping noise.
+- **In the DSP:** 21 continuous controls are now smoothed per sample (10 ms; filter frequencies on a log scale). Output Ceiling is deliberately not smoothed: the protection stage smooths its own gain, and a lagging ceiling would briefly exceed a newly lowered setting. Live sends modulation as stepped control-rate values, so without this, fast LFOs on Echo Volume, Dry or Output caused stepping noise.
 
 | Control under a 5 ms-stepped LFO (energy above 8 kHz) | v0.2.1 | dev |
 |---|---|---|
@@ -68,3 +68,14 @@ Decisions for you:
 Device size is 1216 × 169. Parameter names, ranges and defaults are unchanged from v0.2.1. Structural checks: 0 control overlaps, nothing out of bounds, 0 invalid connections.
 
 `docs/ui_preview_v0.2.2-dev.png` is an **approximate** render from the patch file (`build/render_preview.py`). Max/Live draw the live.* objects with their own artwork, and Live's theme can override some colours, so check it in Live (test L22).
+
+## 6. Hardware slider (v0.2.2-dev)
+The delay slider can now behave like the original's sliding replay head.
+- **Slider Taper = HW (default):** the hero slider is **Slider Position** (0–100 %). It is *linear* in delay time between **Slider Min** and **Slider Max**, like a head on a bar at constant tape speed. Move it at a steady speed and the repeats hold a steady pitch: 730 Hz from a 1 kHz tone, constant across the sweep. The old curved slider drifted from 903 to 516 Hz over the same move.
+- **Range: 60–600 ms by default.** This is an **estimate**. M107 gives no delay range for the tape Echo Unit (its delay tables are for the later bucket-brigade units), and nothing published online gives one. The estimate is bounded by the box size (292 mm wide, at 33 ms per cm of head travel) and is consistent with Echoplex-style units. Slider Min and Max are adjustable and mappable, so a measured range can be dialled in.
+- **Slider Taper = WIDE:** the v0.2.1 "Delay Slider" (2 ms – 4 s, curved), unchanged.
+- **Mapping:** Slider Position, Slider Min and Slider Max are Automated and Stored with additive modulation, so Live's LFO, Shaper, Envelope Follower, automation and MIDI all work. The pitch bends of the sliding head follow the modulation exactly (GX11: GenExpr = reference).
+- **SYNC and TAP** ignore the slider and taper.
+- **Feel:** Slider Response stays at 60 ms by default. With a slow 7-bit MIDI fader (128 steps), 60 ms keeps the step wobble to 0.7 % pitch; 20 ms lets it reach 5.5 % (HW05). Use a high-resolution controller if you want a faster response.
+- **UI:** the slider matching the taper is shown via `thispatcher` scripting. Both stay mappable whichever is visible. **UNVERIFIED** in Live (L23).
+- Tests: `tests/test_hw_slider.py` → `tests/HW_SLIDER_REPORT.md` (6/6); GX11.

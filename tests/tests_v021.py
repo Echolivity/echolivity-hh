@@ -15,6 +15,15 @@ from scipy.signal import resample_poly
 
 from tape_engine import process, default_params, IDX
 
+_dp_hw = default_params
+
+
+def default_params(n):
+    # tests written before the HARDWARE slider drive the WIDE "Delay Slider" (manual_ms)
+    P = _dp_hw(n)
+    P[:, IDX["slider_taper"]] = 0
+    return P
+
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 V020_REF = os.environ.get("ECHOLIVITY_V020_REF", os.path.join(ROOT, "..", "echolivity_v0.2.0_ref", "reference"))
 SR = 48000.0

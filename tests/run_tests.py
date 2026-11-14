@@ -12,6 +12,15 @@ from scipy.signal import hilbert
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reference"))
 from tape_engine import process, default_params, IDX  # noqa: E402
+
+_dp_hw = default_params
+
+
+def default_params(n):
+    # tests written before the HARDWARE slider drive the WIDE "Delay Slider" (manual_ms)
+    P = _dp_hw(n)
+    P[:, IDX["slider_taper"]] = 0
+    return P
 sys.path.insert(0, os.path.dirname(__file__))
 
 RESULTS = []
