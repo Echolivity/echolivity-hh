@@ -1,5 +1,8 @@
 // =====================================================================
-// ECHOLIVITY — H&H ECHO UNIT  ·  tape engine core v0.2.1 (gen~ codebox)
+// ECHOLIVITY — H&H ECHO UNIT  ·  tape engine core v0.2.2-dev (gen~ codebox)
+// v0.2.2-dev: filter coefficients are cached and recomputed only when their
+// inputs (frequency, Q, gain, sample rate) change. Same formulas, same order:
+// output is bit-identical to v0.2.1 (tests GX01–GX07).
 // Mirror of reference/tape_engine.py — keep both in step.
 //
 // Circuit basis: HH Service Manual M107, Echo Unit drawing C/AC20000 iss.7
@@ -20,24 +23,43 @@
 svf(x, fc, q) {
 	History s1(0);
 	History s2(0);
-	fcc = clamp(fc, 5, samplerate * 0.49);
-	g = tan(pi * fcc / samplerate);
-	k = 1 / q;
-	a1 = 1 / (1 + g * (g + k));
-	a2 = g * a1;
-	a3 = g * a2;
+	History key_fc(-1);
+	History key_q(-1);
+	History key_sr(-1);
+	History c_k(0);
+	History c_a1(0);
+	History c_a2(0);
+	History c_a3(0);
+	if (fc != key_fc || q != key_q || samplerate != key_sr) {
+		fcc = clamp(fc, 5, samplerate * 0.49);
+		g = tan(pi * fcc / samplerate);
+		c_k = 1 / q;
+		c_a1 = 1 / (1 + g * (g + c_k));
+		c_a2 = g * c_a1;
+		c_a3 = g * c_a2;
+		key_fc = fc;
+		key_q = q;
+		key_sr = samplerate;
+	}
 	v3 = x - s2;
-	v1 = a1 * s1 + a2 * v3;
-	v2 = s2 + a2 * s1 + a3 * v3;
+	v1 = c_a1 * s1 + c_a2 * v3;
+	v2 = s2 + c_a2 * s1 + c_a3 * v3;
 	s1 = fixdenorm(2 * v1 - s1);
 	s2 = fixdenorm(2 * v2 - s2);
-	return v2, v1, x - k * v1 - v2;
+	return v2, v1, x - c_k * v1 - v2;
 }
 
 lp1(x, fc) {
 	History z(0);
-	a = 1 - exp(-twopi * min(fc, samplerate * 0.49) / samplerate);
-	z = fixdenorm(z + a * (x - z));
+	History key_fc(-1);
+	History key_sr(-1);
+	History c_a(0);
+	if (fc != key_fc || samplerate != key_sr) {
+		c_a = 1 - exp(-twopi * min(fc, samplerate * 0.49) / samplerate);
+		key_fc = fc;
+		key_sr = samplerate;
+	}
+	z = fixdenorm(z + c_a * (x - z));
 	return z;
 }
 
@@ -49,18 +71,36 @@ hp1(x, fc) {
 zp1(x, kdc, fz, fp, fw) {
 	History x1(0);
 	History y1(0);
-	fww = min(fw, samplerate * 0.45);
-	K = twopi * fww / tan(pi * fww / samplerate);
-	cz = K / (twopi * fz);
-	cp = K / (twopi * fp);
-	y = fixdenorm((kdc * ((1 + cz) * x + (1 - cz) * x1) - (1 - cp) * y1) / (1 + cp));
+	History key_fz(-1);
+	History key_fp(-1);
+	History key_fw(-1);
+	History key_sr(-1);
+	History c_cz(0);
+	History c_cp(0);
+	if (fz != key_fz || fp != key_fp || fw != key_fw || samplerate != key_sr) {
+		fww = min(fw, samplerate * 0.45);
+		K = twopi * fww / tan(pi * fww / samplerate);
+		c_cz = K / (twopi * fz);
+		c_cp = K / (twopi * fp);
+		key_fz = fz;
+		key_fp = fp;
+		key_fw = fw;
+		key_sr = samplerate;
+	}
+	y = fixdenorm((kdc * ((1 + c_cz) * x + (1 - c_cz) * x1) - (1 - c_cp) * y1) / (1 + c_cp));
 	x1 = x;
 	y1 = y;
 	return y;
 }
 
 lowshelf(x, gdb, fc, fw) {
-	A = pow(10, abs(gdb) / 20);
+	History key_g(-99999);
+	History c_A(1);
+	if (gdb != key_g) {
+		c_A = pow(10, abs(gdb) / 20);
+		key_g = gdb;
+	}
+	A = c_A;
 	kdc = (gdb >= 0) ? A : 1 / A;
 	fz = (gdb >= 0) ? A * fc : fc;
 	fp = (gdb >= 0) ? fc : A * fc;
@@ -68,7 +108,13 @@ lowshelf(x, gdb, fc, fw) {
 }
 
 highshelf(x, gdb, fc, fw) {
-	A = pow(10, abs(gdb) / 20);
+	History key_g(-99999);
+	History c_A(1);
+	if (gdb != key_g) {
+		c_A = pow(10, abs(gdb) / 20);
+		key_g = gdb;
+	}
+	A = c_A;
 	fz = (gdb >= 0) ? fc : A * fc;
 	fp = (gdb >= 0) ? A * fc : fc;
 	return zp1(x, 1, fz, fp, fw);
@@ -103,7 +149,13 @@ softclip(x, k, c) {
 }
 
 tapesat(x, b) {
-	tb = tanh(b);
+	History key_b(-99999);
+	History c_tb(0);
+	if (b != key_b) {
+		c_tb = tanh(b);
+		key_b = b;
+	}
+	tb = c_tb;
 	return (tanh(x + b) - tb) / (1 - tb * tb);
 }
 
@@ -235,6 +287,32 @@ History wow_rnd(0);
 History fl_rnd(0);
 History last_sr(0);
 History pg_hold(1);
+// cached coefficients (v0.2.2-dev): recomputed only when their inputs change
+History ck_sr(-1);
+History ck_wow(0);
+History ck_fl(0);
+History ck_a10(0);
+History ck_nnorm(1);
+History ck_att(0);
+History ck_rel(0);
+History ck_up(0);
+History ck_dn(0);
+History ck_prel(0);
+History ck_patt(0);
+History ck_tau(-1);
+History ck_as(0);
+History ck_dkey(-99999);
+History ck_dg(1);
+History ck_sat(-99999);
+History ck_gt(1);
+History ck_ing(-99999);
+History ck_ig(1);
+History ck_nkey(-99999);
+History ck_ng(0);
+History ck_okey(-99999);
+History ck_og(1);
+History ck_ckey(-99999);
+History ck_cl(1);
 History pg_s(1);
 History ph_cnt(0);
 
@@ -317,6 +395,24 @@ if (mode < 1.5) {
 }
 T = clamp(T, 0.002, 4);
 
+// sample-rate-dependent constants
+if (sr != ck_sr) {
+	ck_wow = 1 - exp(-twopi * 0.5 / sr);
+	ck_fl = 1 - exp(-twopi * 20 / sr);
+	ck_a10 = 1 - exp(-1 / (0.010 * sr));
+	a_n0 = 1 - exp(-twopi * min(10000, 0.49 * sr) / sr);
+	ck_nnorm = sqrt((1 / 3) * a_n0 / (2 - a_n0));
+	ck_att = 1 - exp(-1 / (0.002 * sr));
+	ck_rel = 1 - exp(-1 / (0.086 * sr));
+	ck_up = 1 - exp(-1 / (0.001 * sr));
+	ck_dn = 1 - exp(-1 / (0.200 * sr));
+	ck_prel = 1 - exp(-1 / (0.150 * sr));
+	ck_patt = 1 - exp(-1 / (0.0005 * sr));
+	ck_sr = sr;
+	ck_tau = -1;
+	ck_nkey = -99999;
+}
+
 if (mode != prev_mode) {
 	if (prev_mode >= 0) {
 		trans_left = transition_ms * 0.001 * sr * 3;
@@ -328,7 +424,11 @@ if (trans_left > 0) {
 	tau_ms = max(transition_ms, glide_ms);
 	trans_left = trans_left - 1;
 }
-a_s = 1 - exp(-1 / (max(tau_ms, 0.5) * 0.001 * sr));
+if (tau_ms != ck_tau) {
+	ck_as = 1 - exp(-1 / (max(tau_ms, 0.5) * 0.001 * sr));
+	ck_tau = tau_ms;
+}
+a_s = ck_as;
 Ts = T * sr;
 if (Ts1 < 0) {
 	Ts1 = Ts;
@@ -351,8 +451,8 @@ fl_ph = fl_ph + 8.5 / sr;
 fl_ph = fl_ph - floor(fl_ph);
 fl2_ph = fl2_ph + 17.3 / sr;
 fl2_ph = fl2_ph - floor(fl2_ph);
-wow_rnd = wow_rnd + (1 - exp(-twopi * 0.5 / sr)) * (noise() * 3 - wow_rnd);
-fl_rnd = fl_rnd + (1 - exp(-twopi * 20 / sr)) * (noise() * 2 - fl_rnd);
+wow_rnd = wow_rnd + ck_wow * (noise() * 3 - wow_rnd);
+fl_rnd = fl_rnd + ck_fl * (noise() * 2 - fl_rnd);
 loop_ph = loop_pos / loop_cells;
 wf = wow * 0.006 * (0.7 * sin(twopi * wow_ph) + 0.3 * wow_rnd)
    + flutter * 0.002 * (0.5 * sin(twopi * fl_ph) + 0.2 * sin(twopi * fl2_ph) + 0.3 * fl_rnd)
@@ -398,22 +498,38 @@ if (sp_pos < sp_w) {
 loop_pos = wrap(loop_pos + v_eff, 0, loop_cells);
 
 // ================= gates & per-sample coefficients ====================
-a10 = 1 - exp(-1 / (0.010 * sr));
+a10 = ck_a10;
 hold_s = hold_s + a10 * (hold - hold_s);
 drive_s = drive_s + a10 * (drive - drive_s);
-drive_gain = pow(10, drive_s * drive_db / 20);
-g_t = 2.12 * pow(4, 2 * (sat - 0.5));
+dkey = drive_s * drive_db;
+if (dkey != ck_dkey) {
+	ck_dg = pow(10, drive_s * drive_db / 20);
+	ck_dkey = dkey;
+}
+drive_gain = ck_dg;
+if (sat != ck_sat) {
+	ck_gt = 2.12 * pow(4, 2 * (sat - 0.5));
+	ck_sat = sat;
+}
+g_t = ck_gt;
 gp = min(1, v_eff / 0.15) * sp_g;
 fc_rec = min(18000, 0.42 * v_eff * sr);
 fc_tape = clamp(7782 * v_eff, 50, 0.45 * sr);
 fb_amt = feedback * (1 - hold_s) + hold_fb * hold_s;
 q_fb = 0.707 + fb_res * 6;
-in_g = pow(10, in_gain_db / 20);
-a_n = 1 - exp(-twopi * min(10000, 0.49 * sr) / sr);
-noise_g = (noise_db > -119) ? pow(10, noise_db / 20) / sqrt((1 / 3) * a_n / (2 - a_n)) : 0;
+if (in_gain_db != ck_ing) {
+	ck_ig = pow(10, in_gain_db / 20);
+	ck_ing = in_gain_db;
+}
+in_g = ck_ig;
+if (noise_db != ck_nkey) {
+	ck_ng = (noise_db > -119) ? pow(10, noise_db / 20) / ck_nnorm : 0;
+	ck_nkey = noise_db;
+}
+noise_g = ck_ng;
 dfb_g = (drive_fb > 0.5) ? drive_gain : 1;
-a_att = 1 - exp(-1 / (0.002 * sr));
-a_rel = 1 - exp(-1 / (0.086 * sr));
+a_att = ck_att;
+a_rel = ck_rel;
 
 xin0 = xl;
 xin1 = xr;
@@ -494,8 +610,8 @@ rec0 = fixnan(rec0);
 rec1 = fixnan(rec1);
 
 fbmax = max(fa0, fa1);
-a_up = 1 - exp(-1 / (0.001 * sr));
-a_dn = 1 - exp(-1 / (0.200 * sr));
+a_up = ck_up;
+a_dn = ck_dn;
 env = fixdenorm(env + ((fbmax > env) ? a_up : a_dn) * (fbmax - env));
 
 // ================= RECORD HEAD: write every cell crossed ==============
@@ -517,7 +633,11 @@ if (p >= N) {
 	r_prev = r_prev - N;
 }
 
-og = pow(10, out_db / 20);
+if (out_db != ck_okey) {
+	ck_og = pow(10, out_db / 20);
+	ck_okey = out_db;
+}
+og = ck_og;
 o1 = fixnan((dry0 * dry + ech0 * echo) * og);
 o2 = fixnan((dry1 * dry + ech1 * echo) * og);
 
@@ -526,7 +646,11 @@ o2 = fixnan((dry1 * dry + ech1 * echo) * og);
 // 10 ms hold, 0.5 ms gain attack, 150 ms release) into a soft clip that
 // only acts between the limiter threshold (ceiling - 0.5 dB) and the
 // ceiling. Below threshold the signal passes bit-exact. Sample-peak only.
-c_lin = pow(10, ceiling_db / 20);
+if (ceiling_db != ck_ckey) {
+	ck_cl = pow(10, ceiling_db / 20);
+	ck_ckey = ceiling_db;
+}
+c_lin = ck_cl;
 thr = c_lin * 0.944061;
 pk = max(abs(o1), abs(o2));
 over = (pk > thr) ? 1 : 0;
@@ -539,10 +663,10 @@ if (protect > 0.5) {
 	} else if (ph_cnt > 0) {
 		ph_cnt = ph_cnt - 1;
 	} else {
-		pg_hold = pg_hold + (1 - exp(-1 / (0.150 * sr))) * (1 - pg_hold);
+		pg_hold = pg_hold + ck_prel * (1 - pg_hold);
 	}
 	if (pg_hold < pg_s) {
-		pg_s = pg_s + (1 - exp(-1 / (0.0005 * sr))) * (pg_hold - pg_s);
+		pg_s = pg_s + ck_patt * (pg_hold - pg_s);
 	} else {
 		pg_s = pg_hold;
 	}

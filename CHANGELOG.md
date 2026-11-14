@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.2-dev (unreleased, 2026-11-14)
+- `dsp/hh_core.genexpr`: coefficient caching (svf, lp1, zp1, shelves, tapesat; main-body sample-rate, gain and time-constant terms). Bit-identical output to v0.2.1 (GX01–GX09; C-build byte comparison). About 40 % less CPU in the C proxy.
+- `build/build_harness.py` → `tests/golden/HH_golden_harness_v0.2.1.maxpat` (v0.2.1 code) and `_v0.2.2-dev.maxpat`: standalone Max golden-render harness for G01/G03–G05.
+- `reference/master_stages.py`, `tests/test_master_stages.py`, `docs/PHASE1_STAGES_DESIGN.md`: Phase 1 remaining stages as measured reference prototypes (not in the device).
+
 ## v0.2.1 — stabilisation release (2026-11-12)
 
 No new sound-shaping features and no change to the H&H model's character. With output protection off, v0.2.1 output equals v0.2.0 to within 3.1 × 10⁻¹⁶ (test R01).
