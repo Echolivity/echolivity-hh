@@ -215,6 +215,17 @@ def main():
     x = 0.3 * np.sin(2 * np.pi * 330 * t) * (t < 0.3)
     compare("GX11", "HARDWARE slider: LFO-mapped position + range change with feedback", P, x, x, 48000.0)
 
+    # GX12 DRY MONO + Stereo MONO, uncorrelated L/R, DRY MONO toggled mid-run
+    n = int(48000 * 0.8)
+    t = np.arange(n) / 48000.0
+    P = quiet(default_params(n))
+    P[:, IDX["stereo"]] = 0
+    P[:, IDX["dry"]] = 0.8
+    P[:, IDX["dry_mono"]] = (t > 0.4).astype(float)
+    xl = 0.3 * np.sin(2 * np.pi * 300 * t)
+    xr = 0.2 * np.sin(2 * np.pi * 470 * t)
+    compare("GX12", "DRY MONO toggled while running, Stereo MONO", P, xl, xr, 48000.0)
+
     out = os.path.join(HERE, "GX_REPORT.md")
     with open(out, "w") as f:
         f.write("# GenExpr-source test report (Python transpiler)\n\n")

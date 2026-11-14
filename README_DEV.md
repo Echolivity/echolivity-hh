@@ -39,9 +39,9 @@ Decisions for you:
 - go-ahead for HF-band decramping in the EQ.
 
 ## 4. LFO / modulator mapping (v0.2.2-dev)
-- All controls (52 since the hardware slider) are **"Automated and Stored"** Live parameters, so Live's LFO, Shaper and Envelope Follower, other Max for Live modulators, automation and MIDI can all map to them.
+- All controls (53 since the hardware slider and DRY MONO) are **"Automated and Stored"** Live parameters, so Live's LFO, Shaper and Envelope Follower, other Max for Live modulators, automation and MIDI can all map to them.
 - The 29 continuous controls also have Modulation Mode = Additive, for Live's clip-envelope modulation.
-- **In the DSP:** 21 continuous controls are now smoothed per sample (10 ms; filter frequencies on a log scale). Output Ceiling is deliberately not smoothed: the protection stage smooths its own gain, and a lagging ceiling would briefly exceed a newly lowered setting. Live sends modulation as stepped control-rate values, so without this, fast LFOs on Echo Volume, Dry or Output caused stepping noise.
+- **In the DSP:** 21 continuous controls (plus the DRY MONO crossfade) are now smoothed per sample (10 ms; filter frequencies on a log scale). Output Ceiling is deliberately not smoothed: the protection stage smooths its own gain, and a lagging ceiling would briefly exceed a newly lowered setting. Live sends modulation as stepped control-rate values, so without this, fast LFOs on Echo Volume, Dry or Output caused stepping noise.
 
 | Control under a 5 ms-stepped LFO (energy above 8 kHz) | v0.2.1 | dev |
 |---|---|---|
@@ -79,3 +79,10 @@ The delay slider can now behave like the original's sliding replay head.
 - **Feel:** Slider Response stays at 60 ms by default. With a slow 7-bit MIDI fader (128 steps), 60 ms keeps the step wobble to 0.7 % pitch; 20 ms lets it reach 5.5 % (HW05). Use a high-resolution controller if you want a faster response.
 - **UI:** the slider matching the taper is shown via `thispatcher` scripting. Both stay mappable whichever is visible. **UNVERIFIED** in Live (L23).
 - Tests: `tests/test_hw_slider.py` → `tests/HW_SLIDER_REPORT.md` (6/6); GX11.
+
+## 7. DRY MONO (v0.2.2-dev)
+The original is mono throughout: Input 1 and Input 2 are summed into one mixing stage (IC6), the heads are two-track heads wired in parallel (one track), and there is one Output and one Echo-only output (M107).
+- **DRY MONO** (ENGINE, off by default, mappable) sums the dry path to mono, 0.5·(L+R), like the echo. Switching crossfades over 10 ms (no click, DM04).
+- **Fully mono, like the original:** DRY MONO on + Stereo MONO. L and R are then bit-identical (DM03).
+- Off by default so the device doesn't collapse a stereo source when you insert it. On a return track with Dry at 0 it makes no difference.
+- Tests: `tests/test_dry_mono.py` → `tests/DRY_MONO_REPORT.md` (4/4); GX12.

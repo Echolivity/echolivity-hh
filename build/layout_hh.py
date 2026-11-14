@@ -365,6 +365,7 @@ dial("head_slew", "Head Speed Limit", "HeadSpd", 0.05, 8, 3, [X + 2, 90], size=(
 dial("transition_ms", "Mode Transition", "Trans", 1, 4000, 250, [X + 40, 90], unit=2, expo=3.0, size=(36, 44), accent=C["dim"])
 dial("hold_fb", "Hold Feedback", "HoldFB", 0.9, 1.05, 1.0, [X + 78, 90], size=(36, 44), accent=C["dim"])
 dial("head_spacing_ms", "Head Spacing (speed mode)", "Spacing", 20, 1000, 300, [X + 116, 90], unit=2, size=(36, 44), accent=C["dim"])
+toggle_text("dry_mono", "Dry Mono", "DryMono", "DRY MONO", [X + 102, 68], [46, 16], init=0, accent=C["cream"], fontsize=7.0)
 tap_ = tab("slider_taper", "Slider Taper", "Taper", ["WIDE", "HW"], 1, [X + 102, 48], [46, 16], accent=C["amber"], fontsize=7.5)
 # show the slider that matches the taper (UI only; both parameters remain mappable)
 tsel = obj("sel 0 1", [1500, 300, 60, 22], nin=3, nout=3, otype=["bang", "bang", ""])

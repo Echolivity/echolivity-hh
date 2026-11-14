@@ -35,6 +35,7 @@ PARAMS = [
     ("head_slew", 3.0), ("dry_treble_db", 0.0), ("limiter", 1), ("loop_type", 1),
     ("splice", 0.25), ("protect", 1), ("ceiling_db", -0.3),
     ("slider_taper", 1), ("slider_pos", 0.5), ("slider_min_ms", 60.0), ("slider_max_ms", 600.0),
+    ("dry_mono", 0),
 ]
 IDX = {name: i for i, (name, _) in enumerate(PARAMS)}
 NP = len(PARAMS)
@@ -245,8 +246,8 @@ def process(xl, xr, P, sr, seed=1):
     wow_rnd = 0.0
     fl_rnd = 0.0
 
-    SM_IDX = np.array([0, 1, 2, 3, 14, 15, 16, 17, 18, 19, 20, 22, 24, 34, 38, 41, 44, 32, 33, 35, 36], dtype=np.int64)
-    SM_LOG = np.array([False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True, True, True, True], dtype=np.bool_)
+    SM_IDX = np.array([0, 1, 2, 3, 14, 15, 16, 17, 18, 19, 20, 22, 24, 34, 38, 41, 44, 51, 32, 33, 35, 36], dtype=np.int64)
+    SM_LOG = np.array([False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True, True, True, True], dtype=np.bool_)
     SM_N = SM_IDX.shape[0]
     sm_state = np.zeros(SM_N)
     smv = P[0].copy()
@@ -498,7 +499,11 @@ def process(xl, xr, P, sr, seed=1):
             e2l, e2b, e2h = _svf(st, o + 14, e1h, smv[36], 0.707, sr)
             ech[ch] = _dcblock(st, o + 15, e2l, sr)
             # --- dry path: dry Treble (IC7)
-            xd = min(max((xlt if ch == 0 else xrt) * in_g, -17.8), 17.8)   # dry stays stereo
+            xdsrc = (xlt if ch == 0 else xrt)
+            if smv[51] > 0.0:                                            # DRY MONO, 10 ms crossfade
+                xdm = 0.5 * (xlt + xrt)
+                xdsrc = xdm if smv[51] >= 1.0 else xdsrc + smv[51] * (xdm - xdsrc)
+            xd = min(max(xdsrc * in_g, -17.8), 17.8)
             dryo[ch] = _highshelf(st, o + 16, xd, smv[41] * (20.0 / 16.0), DTREB_FC, 10000.0, sr)
 
         if Pn[37] < 0.5:

@@ -296,6 +296,9 @@ Param slider_taper(1, min=0, max=1);
 Param slider_pos(0.5, min=0, max=1);
 Param slider_min_ms(60, min=2, max=2000);
 Param slider_max_ms(600, min=2, max=4000);
+// dry_mono (v0.2.2-dev): 1 = sum the dry path to mono like the original (two inputs
+// into one mixing stage, IC6). With Stereo = MONO the whole device is then mono.
+Param dry_mono(0, min=0, max=1);
 
 // ---------- state -----------------------------------------------------
 History p(0);
@@ -480,6 +483,7 @@ sm_fb_res = psmooth(fb_res, ck_ps);
 sm_head_spacing_ms = psmooth(head_spacing_ms, ck_ps);
 sm_dry_treble_db = psmooth(dry_treble_db, ck_ps);
 sm_splice = psmooth(splice, ck_ps);
+sm_dry_mono = psmooth(dry_mono, ck_ps);     // 10 ms crossfade stereo <-> mono dry
 // ceiling_db is NOT smoothed: the protection stage smooths its own gain, and a
 // lagging ceiling would let output exceed a newly lowered ceiling (test P05)
 sm_fb_hp_hz = fsmooth(fb_hp_hz, ck_ps);
@@ -668,11 +672,18 @@ if (w_box > 0) {
 }
 
 // ================= TRACK PROCESSING ===================================
-rec0, ech0, dry0, fa0, gl0 = chan(yr0, xin0, xl, gp, fc_tape, sm_fb_hp_hz, sm_fb_lp_hz, q_fb, fb_amt,
+xdl = xl;
+xdr = xr;
+if (sm_dry_mono > 0) {
+	xdm = 0.5 * (xl + xr);
+	xdl = (sm_dry_mono >= 1) ? xdm : xl + sm_dry_mono * (xdm - xl);
+	xdr = (sm_dry_mono >= 1) ? xdm : xr + sm_dry_mono * (xdm - xr);
+}
+rec0, ech0, dry0, fa0, gl0 = chan(yr0, xin0, xdl, gp, fc_tape, sm_fb_hp_hz, sm_fb_lp_hz, q_fb, fb_amt,
                                   guard, dfb_g, in_g, drive_gain, hold_s, noise_g, g_t, fc_rec,
                                   sm_bass_db, sm_treble_db, sm_dry_treble_db, sm_echo_hp_hz, sm_echo_lp_hz,
                                   limiter, a_att, a_rel);
-rec1, ech1, dry1, fa1, gl1 = chan(yr1, xin1, xr, gp, fc_tape, sm_fb_hp_hz, sm_fb_lp_hz, q_fb, fb_amt,
+rec1, ech1, dry1, fa1, gl1 = chan(yr1, xin1, xdr, gp, fc_tape, sm_fb_hp_hz, sm_fb_lp_hz, q_fb, fb_amt,
                                   guard, dfb_g, in_g, drive_gain, hold_s, noise_g, g_t, fc_rec,
                                   sm_bass_db, sm_treble_db, sm_dry_treble_db, sm_echo_hp_hz, sm_echo_lp_hz,
                                   limiter, a_att, a_rel);
