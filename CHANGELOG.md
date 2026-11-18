@@ -1,5 +1,8 @@
 # Changelog
 
+## Repository front page (2026-11-18) — no change to the device or the DSP
+- New README in the Echolivity collection style (machine overview, install, performance panel, themes, validation status, known limitations, authenticity); panel images in `docs/images/` rendered from the v0.2.3-dev device (approximate).
+
 ## v0.2.3-dev (2026-11-18) — gen~ reserved-name fix
 - `dsp/hh_core.genexpr`: identifiers that collide with gen~ built-in operators renamed: `dcblock` → `dc_block` (function, 2 calls), `lt` → `l_t` (in `fsmooth`). Same risk class as the v0.2.1 renames (`div`, `e`, `avg`); same fix as EP-3 v0.1.2-dev.
 - No functional change: old and new source give bit-identical output on all 8 outputs (defaults with noise / wow / flutter, feedback 0.85 with all four smoothed filter controls automated, 44.1 kHz): `tests/investigations/rename_identity.py`.
