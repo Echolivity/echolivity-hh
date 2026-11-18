@@ -177,7 +177,7 @@ patcher = {
         "default_fontsize": 10.0, "default_fontface": 0, "default_fontname": "Arial",
         "openrect": [0.0, 0.0, DEVW, 169.0],
         "gridonopen": 1, "gridsize": [8.0, 8.0], "devicewidth": DEVW,
-        "description": "Echolivity H&H Echo Unit — tape echo, v0.2.2-dev (M107-based)",
+        "description": "Echolivity H&H Echo Unit — tape echo, v0.2.3-dev (M107-based)",
         "parameters": registry,
         "boxes": boxes, "lines": lines, "dependency_cache": [],
         "latency": 0, "is_mpe": 0, "minimum_live_version": "", "minimum_max_version": "",
@@ -192,7 +192,7 @@ patcher = {
 }
 
 os.makedirs(os.path.join(ROOT, "devices"), exist_ok=True)
-OUTNAME = os.environ.get("HH_DEVICE_NAME", "Echolivity_HH_v0.2.2-dev")
+OUTNAME = os.environ.get("HH_DEVICE_NAME", "Echolivity_HH_v0.2.3-dev")
 js = json.dumps(patcher, indent=1)
 open(os.path.join(ROOT, "devices", OUTNAME + ".maxpat"), "w").write(js)
 

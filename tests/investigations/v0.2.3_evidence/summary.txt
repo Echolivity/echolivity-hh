@@ -1,0 +1,10 @@
+rename_identity: RESULT: PASS (bit-identical)
+run_gx_tests exit=0 :: pass 14 fail 0 :: 14/14 passed -> /home/claude/echolivity_dev/tests/genexpr_sim/GX_REPORT.md
+run_tests exit=0 :: pass 38 fail 0 :: 38/38 passed → /home/claude/echolivity_dev/tests/TEST_REPORT_reference.md
+tests_v021: not standalone (module imported by run_tests.py; its tests are inside the 38/38)
+test_modulation exit=0 :: pass 4 fail 0 :: 4/4 passed
+test_hw_slider exit=0 :: pass 6 fail 0 :: 6/6 passed
+test_dry_mono exit=0 :: pass 4 fail 0 :: 4/4 passed
+test_ui_theme exit=0 :: pass 0 fail 0 :: 4/4 passed
+test_master_stages exit=0 :: pass 33 fail 0 :: 33/33 passed
+DONE

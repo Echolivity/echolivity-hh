@@ -1,0 +1,5 @@
+TH01 EL message turns the EMBER patch into the EL palette; EMBER message restores it PASS - 405 colour changes; worst error vs EL build 4.9e-05, vs original after switching back 4.9e-05 (over 436 colour attributes, %.4g rounding)
+TH02 Every target exists, scripting names unique, only r g b a colour values sent PASS - missing targets 0, malformed 0, 102 scripting names, duplicates 0
+TH03 Theme selector stored with the set, not automatable; wired to thispatcher and re-sent on load PASS - invisible=1 (Stored Only), enum ['EMBER', 'EL'], default EMBER; tab→sel True, sel→all 22 message boxes True, →thispatcher True, live.thisdevice→tab True
+TH04 Nothing but colours differs between themes (boxes, parameters, cords, sound path) PASS - non-colour differences 0, cords identical True, 54 Live parameters (53 automatable + theme)
+4/4 passed

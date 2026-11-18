@@ -146,7 +146,7 @@ box("panel", [1300, 560, 40, 20], pres=[0, 0, DEVW, 169], nin=1, nout=0, bgcolor
     rounded=0, background=1)
 comment("ECHOLIVITY", [8, -1, 110, 16], [1300, 520, 100, 18], size=10.5, fontface=1, textcolor=C["word"], background=1)
 comment("H&H  ECHO UNIT", [96, -1, 120, 16], [1300, 540, 100, 18], size=9.0, fontface=1, textcolor=C["amber"], background=1)
-comment("12 ips · sliding replay head · v0.2.2-dev", [196, 0, 230, 15], [1420, 540, 160, 18], size=8.0,
+comment("12 ips · sliding replay head · v0.2.3-dev", [196, 0, 230, 15], [1420, 540, 160, 18], size=8.0,
         textcolor=C["dim"], background=1)
 
 # section plates: x, width

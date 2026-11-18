@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.3-dev (2026-11-18) — gen~ reserved-name fix
+- `dsp/hh_core.genexpr`: identifiers that collide with gen~ built-in operators renamed: `dcblock` → `dc_block` (function, 2 calls), `lt` → `l_t` (in `fsmooth`). Same risk class as the v0.2.1 renames (`div`, `e`, `avg`); same fix as EP-3 v0.1.2-dev.
+- No functional change: old and new source give bit-identical output on all 8 outputs (defaults with noise / wow / flutter, feedback 0.85 with all four smoothed filter controls automated, 44.1 kHz): `tests/investigations/rename_identity.py`.
+- Device and harness rebuilt: `devices/Echolivity_HH_v0.2.3-dev.*`, `tests/golden/HH_golden_harness_v0.2.3-dev.maxpat` (codebox = engine source).
+- Pre-flight: `tests/lint/gen_names.py` (official Gen operator list): 0 HIGH findings after the rename; `s`, `f`, `r` remain as LOW/MEDIUM. Fallback harness `tests/golden/fallback/HH_golden_harness_FALLBACK_NAMES.maxpat` (those names renamed, bit-identical) for use only if G01 reports an error on them. .amxd header layout matches Ableton's devices (maxdevtools). Device width 1 216 px and missing info text noted (Ableton checklist).
+- Tests: GX 14/14, reference 38/38 (incl. v0.2.1 additions), modulation 4/4, hardware slider 6/6, dry mono 4/4, UI theme 4/4, master stages 33/33. Evidence `tests/investigations/v0.2.3_evidence/`. Max 9 / Live 12: not run (G01 still BLOCKED).
+
 ## v0.2.2-dev (unreleased, 2026-11-14)
 - UI THEME switch (EMBER default / EL): EL is black/silver with electroluminescent-green legends, inspired by HH's 1970s EL-lit panels. Stored-only parameter `ui_theme` (54 Live parameters, 53 automatable); colours applied via thispatcher sendbox, generated from a two-palette build diff. Tests TH01–TH04.
 - DRY MONO (new parameter, default off): sums the dry path to mono like the original (M107: two inputs into one mix, one output); 10 ms crossfade when switched. With Stereo MONO the device output is fully mono. Tests DM01–DM04, GX12.

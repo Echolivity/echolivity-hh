@@ -4,7 +4,7 @@ Environment: **GenExpr source executed by tests/genexpr_sim/gx_transpile.py** �
 
 | ID | Test | Result | Evidence |
 |---|---|---|---|
-| GX01 | Factory defaults (noise/wow off), feedback 0.6, tone + noise burst | PASS | max |gen−ref| per output: L 0.0e+00, R 0.0e+00, delay_ms 0.0e+00, tap_bpm 0.0e+00, lim_gain 0.0e+00, read_rate 0.0e+00, prot_gain 0.0e+00, over 0.0e+00 (72000 samples @ 48000 Hz, 4 s) |
+| GX01 | Factory defaults (noise/wow off), feedback 0.6, tone + noise burst | PASS | max |gen−ref| per output: L 0.0e+00, R 0.0e+00, delay_ms 0.0e+00, tap_bpm 0.0e+00, lim_gain 0.0e+00, read_rate 0.0e+00, prot_gain 0.0e+00, over 0.0e+00 (72000 samples @ 48000 Hz, 8 s) |
 | GX02 | Sliding head sweep + jumps (incl. reverse read, read rate up to ±4) | PASS | max |gen−ref| per output: L 0.0e+00, R 0.0e+00, delay_ms 0.0e+00, tap_bpm 0.0e+00, lim_gain 0.0e+00, read_rate 0.0e+00, prot_gain 0.0e+00, over 0.0e+00 (72000 samples @ 48000 Hz, 4 s) |
 | GX02b | Box-integrated read exercised | PASS | read-rate range -2.00 … 4.00 |
 | GX03 | Variable-speed option + TAPE STOP / restart | PASS | max |gen−ref| per output: L 0.0e+00, R 0.0e+00, delay_ms 0.0e+00, tap_bpm 0.0e+00, lim_gain 0.0e+00, read_rate 0.0e+00, prot_gain 0.0e+00, over 0.0e+00 (96000 samples @ 48000 Hz, 5 s) |

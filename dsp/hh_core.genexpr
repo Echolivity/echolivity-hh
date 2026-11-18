@@ -1,5 +1,7 @@
 // =====================================================================
-// ECHOLIVITY — H&H ECHO UNIT  ·  tape engine core v0.2.2-dev (gen~ codebox)
+// ECHOLIVITY — H&H ECHO UNIT  ·  tape engine core v0.2.3-dev (gen~ codebox)
+// v0.2.3-dev: identifiers that collide with gen~ built-in operators renamed (dcblock -> dc_block,
+// lt -> l_t), as in EP-3 v0.1.2-dev; no functional change (bit-identical, tests/investigations/rename_identity.py).
 // v0.2.2-dev: filter coefficients are cached and recomputed only when their
 // inputs (frequency, Q, gain, sample rate) change. Same formulas, same order:
 // output is bit-identical to v0.2.1 (tests GX01–GX07).
@@ -120,7 +122,7 @@ highshelf(x, gdb, fc, fw) {
 	return zp1(x, 1, fz, fp, fw);
 }
 
-dcblock(x) {
+dc_block(x) {
 	History x1(0);
 	History y1(0);
 	R = 1 - twopi * 10 / samplerate;
@@ -181,16 +183,16 @@ psmooth(t, a) {
 fsmooth(f, a) {
 	History ls(0);
 	History init(0);
-	lt = log(f);
+	l_t = log(f);
 	if (init < 0.5) {
-		ls = lt;
+		ls = l_t;
 		init = 1;
 	}
-	ls = ls + a * (lt - ls);
-	if (abs(lt - ls) <= 0.000000001) {
-		ls = lt;
+	ls = ls + a * (l_t - ls);
+	if (abs(l_t - ls) <= 0.000000001) {
+		ls = l_t;
 	}
-	return (ls == lt) ? f : exp(ls);
+	return (ls == l_t) ? f : exp(ls);
 }
 
 // one tape track (+ its dry channel)
@@ -223,14 +225,14 @@ chan(y_in, xin, xdry, gp, fc_tape, fbhp, fblp, q_fb, fb_amt, guard, dfb_g, in_g,
 	u = u * g_l;
 	u = zp1(u, 1, 6047, 15392, 11000);              // IC9 record pre-emphasis
 	u = tapesat(u * g_t * drive_gain, 0.05) / g_t;  // tape (DRIVE pushes into it)
-	u = dcblock(u);
+	u = dc_block(u);
 	rl, rb, rh = svf(u, fc_rec, 0.707);             // record / anti-alias LPF
 	// --- echo output: Baxandall Bass/Treble outside the loop, perf filters
 	eo = lowshelf(y, bass_db * 1.5, 65, 100);
 	eo = highshelf(eo, treble_db * 18 / 14, 1580, 10000);
 	e1l, e1b, e1h = svf(eo, ehp, 0.707);
 	e2l, e2b, e2h = svf(e1h, elp, 0.707);
-	ech = dcblock(e2l);
+	ech = dc_block(e2l);
 	// --- dry path: dry Treble (IC7)
 	xd = clamp(xdry * in_g, -17.8, 17.8);
 	dryo = highshelf(xd, dtreb_db * 20 / 16, 1245, 10000);

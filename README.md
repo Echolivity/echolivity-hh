@@ -1,5 +1,7 @@
 # Echolivity Classic Echo Collection — H&H Echo Unit v0.2.1
 
+> **Repository state: development line v0.2.3-dev (unreleased).** The last release is **v0.2.1** (git tag `v0.2.1`); this README describes it. Work since then (v0.2.2-dev / v0.2.3-dev) is in `CHANGELOG.md` and `README_DEV.md`. Nothing here has been run in Max 9 or Live 12 yet.
+
 v0.2.1 is a stabilisation release of the H&H tape echo. It's a Max for Live audio effect modelled on the HH Electronic Echo Unit, with a sliding replay head and 12 ips tape, based on Service Manual M107.
 
 > **Release state: NOT RELEASE-READY — build-ready, awaiting Max 9 / Live 12 validation.**

@@ -1,0 +1,778 @@
+// FALLBACK NAMES BUILD (not a release): identical engine with locals that share Gen operator names renamed
+// (s->st_s, f->fq, i->ii, gtp->g_tp, r->rdp). Use only if gen~ reports an error on one of those names.
+// =====================================================================
+// ECHOLIVITY — H&H ECHO UNIT  ·  tape engine core v0.2.3-dev (gen~ codebox)
+// v0.2.3-dev: identifiers that collide with gen~ built-in operators renamed (dcblock -> dc_block,
+// lt -> l_t), as in EP-3 v0.1.2-dev; no functional change (bit-identical, tests/investigations/rename_identity.py).
+// v0.2.2-dev: filter coefficients are cached and recomputed only when their
+// inputs (frequency, Q, gain, sample rate) change. Same formulas, same order:
+// output is bit-identical to v0.2.1 (tests GX01–GX07).
+// Mirror of reference/tape_engine.py — keep both in step.
+//
+// Circuit basis: HH Service Manual M107, Echo Unit drawing C/AC20000 iss.7
+//   record node -> Q3 limiter (80 mV, 10:1) -> IC9 pre-emphasis -> tape
+//   -> sliding replay head (12 ips) -> playback EQ (3.27 ms / 70.5 us)
+//   -> REPEAT (pre-tone) -> Baxandall Bass/Treble -> Echo Volume
+//   dry: channel amp (+6 dB max) -> dry Treble -> output
+// Level convention: 100 mV (H/H nominal) == -18 dBFS RMS.
+//
+// in1/in2  : audio L/R
+// out1/out2: audio L/R
+// out3: effective delay (ms)   out4: tap BPM
+// out5: record-limiter gain    out6: read rate (pitch ratio)
+// out7: output-protection gain out8: output over flag (pre-protection peak > threshold)
+// =====================================================================
+
+// ---------- stateful helpers (each call site gets its own state) ------
+svf(x, fc, q) {
+	History s1(0);
+	History s2(0);
+	History key_fc(-1);
+	History key_q(-1);
+	History key_sr(-1);
+	History c_k(0);
+	History c_a1(0);
+	History c_a2(0);
+	History c_a3(0);
+	if (fc != key_fc || q != key_q || samplerate != key_sr) {
+		fcc = clamp(fc, 5, samplerate * 0.49);
+		g = tan(pi * fcc / samplerate);
+		c_k = 1 / q;
+		c_a1 = 1 / (1 + g * (g + c_k));
+		c_a2 = g * c_a1;
+		c_a3 = g * c_a2;
+		key_fc = fc;
+		key_q = q;
+		key_sr = samplerate;
+	}
+	v3 = x - s2;
+	v1 = c_a1 * s1 + c_a2 * v3;
+	v2 = s2 + c_a2 * s1 + c_a3 * v3;
+	s1 = fixdenorm(2 * v1 - s1);
+	s2 = fixdenorm(2 * v2 - s2);
+	return v2, v1, x - c_k * v1 - v2;
+}
+
+lp1(x, fc) {
+	History z(0);
+	History key_fc(-1);
+	History key_sr(-1);
+	History c_a(0);
+	if (fc != key_fc || samplerate != key_sr) {
+		c_a = 1 - exp(-twopi * min(fc, samplerate * 0.49) / samplerate);
+		key_fc = fc;
+		key_sr = samplerate;
+	}
+	z = fixdenorm(z + c_a * (x - z));
+	return z;
+}
+
+hp1(x, fc) {
+	return x - lp1(x, fc);
+}
+
+// H(s) = kdc (1 + s/wz)/(1 + s/wp); bilinear prewarped at fw
+zp1(x, kdc, fz, fp, fw) {
+	History x1(0);
+	History y1(0);
+	History key_fz(-1);
+	History key_fp(-1);
+	History key_fw(-1);
+	History key_sr(-1);
+	History c_cz(0);
+	History c_cp(0);
+	if (fz != key_fz || fp != key_fp || fw != key_fw || samplerate != key_sr) {
+		fww = min(fw, samplerate * 0.45);
+		K = twopi * fww / tan(pi * fww / samplerate);
+		c_cz = K / (twopi * fz);
+		c_cp = K / (twopi * fp);
+		key_fz = fz;
+		key_fp = fp;
+		key_fw = fw;
+		key_sr = samplerate;
+	}
+	y = fixdenorm((kdc * ((1 + c_cz) * x + (1 - c_cz) * x1) - (1 - c_cp) * y1) / (1 + c_cp));
+	x1 = x;
+	y1 = y;
+	return y;
+}
+
+lowshelf(x, gdb, fc, fw) {
+	History key_g(-99999);
+	History c_A(1);
+	if (gdb != key_g) {
+		c_A = pow(10, abs(gdb) / 20);
+		key_g = gdb;
+	}
+	A = c_A;
+	kdc = (gdb >= 0) ? A : 1 / A;
+	fz = (gdb >= 0) ? A * fc : fc;
+	fp = (gdb >= 0) ? fc : A * fc;
+	return zp1(x, kdc, fz, fp, fw);
+}
+
+highshelf(x, gdb, fc, fw) {
+	History key_g(-99999);
+	History c_A(1);
+	if (gdb != key_g) {
+		c_A = pow(10, abs(gdb) / 20);
+		key_g = gdb;
+	}
+	A = c_A;
+	fz = (gdb >= 0) ? fc : A * fc;
+	fp = (gdb >= 0) ? A * fc : fc;
+	return zp1(x, 1, fz, fp, fw);
+}
+
+dc_block(x) {
+	History x1(0);
+	History y1(0);
+	R = 1 - twopi * 10 / samplerate;
+	y = fixdenorm(x - x1 + R * y1);
+	x1 = x;
+	y1 = y;
+	return y;
+}
+
+hermite(xm1, x0, x1, x2, fq) {
+	c1 = 0.5 * (x1 - xm1);
+	c2 = xm1 - 2.5 * x0 + 2 * x1 - 0.5 * x2;
+	c3 = 0.5 * (x2 - xm1) + 1.5 * (x0 - x1);
+	return ((c3 * fq + c2) * fq + c1) * fq + x0;
+}
+
+// soft clip above k, asymptotic to c (only acts on |x| > k)
+softclip(x, k, c) {
+	ax = abs(x);
+	y = x;
+	if (ax > k) {
+		sg = (x >= 0) ? 1 : -1;
+		y = sg * (k + (c - k) * tanh((ax - k) / (c - k)));
+	}
+	return y;
+}
+
+tapesat(x, b) {
+	History key_b(-99999);
+	History c_tb(0);
+	if (b != key_b) {
+		c_tb = tanh(b);
+		key_b = b;
+	}
+	tb = c_tb;
+	return (tanh(x + b) - tb) / (1 - tb * tb);
+}
+
+// --- parameter smoothing (v0.2.2-dev): makes every continuous control safe to
+// drive from Live's LFO / Shaper / Envelope Follower or fast automation. The
+// first sample snaps to the target, and the smoother snaps exactly onto a
+// target it has reached, so static settings produce v0.2.1's exact output.
+psmooth(t, a) {
+	History st_s(0);
+	History init(0);
+	if (init < 0.5) {
+		st_s = t;
+		init = 1;
+	}
+	st_s = st_s + a * (t - st_s);
+	if (abs(t - st_s) <= 0.000000001 * max(1, abs(t))) {
+		st_s = t;
+	}
+	return st_s;
+}
+
+// frequency parameters are smoothed on a log scale (even-sounding sweeps)
+fsmooth(fq, a) {
+	History ls(0);
+	History init(0);
+	l_t = log(fq);
+	if (init < 0.5) {
+		ls = l_t;
+		init = 1;
+	}
+	ls = ls + a * (l_t - ls);
+	if (abs(l_t - ls) <= 0.000000001) {
+		ls = l_t;
+	}
+	return (ls == l_t) ? fq : exp(ls);
+}
+
+// one tape track (+ its dry channel)
+chan(y_in, xin, xdry, gp, fc_tape, fbhp, fblp, q_fb, fb_amt, guard, dfb_g, in_g, drive_gain,
+     hold_s, noise_g, g_t, fc_rec, bass_db, treble_db, dtreb_db, ehp, elp, lim_on, a_att, a_rel) {
+	History lenv(0);
+	// --- replay head + playback preamp
+	y = y_in * gp;
+	tl, tb_, th = svf(y, fc_tape, 0.707);           // tape HF loss (fitted to spec)
+	y = hp1(tl, 48.7);                              // playback EQ tau1 = 3.27 ms
+	y = hp1(y, 15.4);                               // C4/R8
+	y = hp1(y, 15.4);                               // C1/R1
+	y = y + lp1(noise(), 10000) * noise_g;          // replay noise (recirculates)
+	// --- REPEAT, taken before the tone controls (M107)
+	f1l, f1b, f1h = svf(y, fbhp, q_fb);
+	f2l, f2b, f2h = svf(f1h, fblp, q_fb);
+	fbabs = abs(f2l * fb_amt);
+	fbs = f2l * fb_amt * guard * dfb_g;
+	// --- record node: channel amp (clean op-amp) + repeat
+	xa = clamp(xin * in_g, -17.8, 17.8);
+	u = xa * drive_gain * (1 - hold_s) + fbs;
+	u = hp1(u, 19.3);                               // record input coupling
+	// Q3 limiter: half-wave peak of the pre-emphasised record signal
+	det = max(zp1(u, 1, 6047, 15392, 11000), 0);
+	lenv = fixdenorm(lenv + ((det > lenv) ? a_att : a_rel) * (det - lenv));
+	g_l = 1;
+	if (lim_on > 0.5 && lenv > 0.2828) {
+		g_l = pow(lenv / 0.2828, -0.9);             // 10:1 static curve
+	}
+	u = u * g_l;
+	u = zp1(u, 1, 6047, 15392, 11000);              // IC9 record pre-emphasis
+	u = tapesat(u * g_t * drive_gain, 0.05) / g_t;  // tape (DRIVE pushes into it)
+	u = dc_block(u);
+	rl, rb, rh = svf(u, fc_rec, 0.707);             // record / anti-alias LPF
+	// --- echo output: Baxandall Bass/Treble outside the loop, perf filters
+	eo = lowshelf(y, bass_db * 1.5, 65, 100);
+	eo = highshelf(eo, treble_db * 18 / 14, 1580, 10000);
+	e1l, e1b, e1h = svf(eo, ehp, 0.707);
+	e2l, e2b, e2h = svf(e1h, elp, 0.707);
+	ech = dc_block(e2l);
+	// --- dry path: dry Treble (IC7)
+	xd = clamp(xdry * in_g, -17.8, 17.8);
+	dryo = highshelf(xd, dtreb_db * 20 / 16, 1245, 10000);
+	return rl, ech, dryo, fbabs, g_l;
+}
+
+// ---------- tape ------------------------------------------------------
+Data tape(800000, 2);
+
+// ---------- parameters ------------------------------------------------
+Param in_gain_db(6, min=-36, max=12);
+Param dry(0.5, min=0, max=1);
+Param echo(0.5, min=0, max=1.5);
+Param out_db(0, min=-36, max=12);
+Param mode(2, min=0, max=2);
+Param manual_ms(350, min=2, max=4000);
+Param bpm(120, min=20, max=999);
+Param sync_div(2, min=0, max=5);
+Param sync_type(0, min=0, max=2);
+Param sync_mult(1, min=1, max=8);
+Param offset_ms(0, min=-100, max=100);
+Param tap(0, min=0, max=1000000);   // monotonically increasing tap counter
+Param tap_div(3, min=0, max=5);
+Param tap_type(0, min=0, max=2);
+Param feedback(0.45, min=0, max=1.2);
+Param bass_db(0, min=-10, max=10);
+Param treble_db(0, min=-14, max=14);
+Param sat(0.5, min=0, max=1);
+Param noise_db(-60, min=-120, max=-30);
+Param wow(0.05, min=0, max=1);
+Param flutter(0.1, min=0, max=1);
+Param hold(0, min=0, max=1);
+Param hold_fb(1, min=0.9, max=1.05);
+Param drive(0, min=0, max=1);
+Param drive_db(12, min=0, max=24);
+Param drive_fb(0, min=0, max=1);
+Param tape_stop(0, min=0, max=1);
+Param stop_time(1, min=0.05, max=8);
+Param start_time(0.4, min=0.05, max=8);
+Param slider_mode(0, min=0, max=1);
+Param glide_ms(60, min=1, max=2000);
+Param transition_ms(250, min=1, max=4000);
+Param fb_hp_hz(10, min=10, max=2000);
+Param fb_lp_hz(20000, min=500, max=20000);
+Param fb_res(0, min=0, max=1);
+Param echo_hp_hz(10, min=10, max=2000);
+Param echo_lp_hz(20000, min=500, max=20000);
+Param stereo(0, min=0, max=1);
+Param head_spacing_ms(300, min=20, max=1000);
+Param bar_beats(4, min=1, max=16);
+Param head_slew(3, min=0.05, max=8);
+Param dry_treble_db(0, min=-16, max=16);
+Param limiter(1, min=0, max=1);
+Param loop_type(1, min=0, max=1);
+Param splice(0.25, min=0, max=1);
+Param protect(1, min=0, max=1);
+Param ceiling_db(-0.3, min=-12, max=0);
+// hardware slider (v0.2.2-dev). HARDWARE: delay is LINEAR in slider position, like a
+// replay head on a bar at constant tape speed (distance / 30.5 cm/s). Range is an
+// ESTIMATE (60–600 ms): M107 gives no delay range for the tape Echo Unit.
+// WIDE: the v0.2.1 behaviour (Delay Slider in ms, 2 ms – 4 s).
+Param slider_taper(1, min=0, max=1);
+Param slider_pos(0.5, min=0, max=1);
+Param slider_min_ms(60, min=2, max=2000);
+Param slider_max_ms(600, min=2, max=4000);
+// dry_mono (v0.2.2-dev): 1 = sum the dry path to mono like the original (two inputs
+// into one mixing stage, IC6). With Stereo = MONO the whole device is then mono.
+Param dry_mono(0, min=0, max=1);
+
+// ---------- state -----------------------------------------------------
+History p(0);
+History r_prev(0);
+History loop_pos(0);
+History first(1);
+History rec_p0(0);
+History rec_p1(0);
+History Ts1(-1);
+History Ts2(-1);
+History d_head(-1);
+History s_stop(1);
+History hold_s(0);
+History drive_s(0);
+History env(0);
+History prev_mode(-1);
+History trans_left(0);
+History nsamp(0);
+History tap_prev(0);
+History last_tap(-1);
+History t_count(0);
+History ti0(0);
+History ti1(0);
+History ti2(0);
+History ti3(0);
+History tap_bpm(120);
+History wow_ph(0);
+History fl_ph(0);
+History fl2_ph(0);
+History wow_rnd(0);
+History fl_rnd(0);
+History last_sr(0);
+History pg_hold(1);
+// cached coefficients (v0.2.2-dev): recomputed only when their inputs change
+History ck_sr(-1);
+History ck_ps(0);
+History ck_wow(0);
+History ck_fl(0);
+History ck_a10(0);
+History ck_nnorm(1);
+History ck_att(0);
+History ck_rel(0);
+History ck_up(0);
+History ck_dn(0);
+History ck_prel(0);
+History ck_patt(0);
+History ck_tau(-1);
+History ck_as(0);
+History ck_dkey(-99999);
+History ck_dg(1);
+History ck_sat(-99999);
+History ck_gt(1);
+History ck_ing(-99999);
+History ck_ig(1);
+History ck_nkey(-99999);
+History ck_ng(0);
+History ck_okey(-99999);
+History ck_og(1);
+History ck_ckey(-99999);
+History ck_cl(1);
+History pg_s(1);
+History ph_cnt(0);
+
+N = 800000;
+sr = samplerate;
+t = nsamp;
+nsamp = nsamp + 1;
+xl = fixnan(in1);
+xr = fixnan(in2);
+
+// sample-rate change: snap smoothers (they hold sample counts) and reset tap
+// timing, so the head does not glide/chirp from the old-rate distance
+if (sr != last_sr) {
+	if (last_sr > 0) {
+		Ts1 = -1;
+		Ts2 = -1;
+		d_head = -1;
+		last_tap = -1;
+		t_count = 0;
+	}
+	last_sr = sr;
+}
+
+// ================= TAP TEMPO (sample counter) =========================
+if (tap > tap_prev + 0.5) {                      // tap counter increased = one tap
+	if (last_tap >= 0) {
+		iv = t - last_tap;
+		if (iv < 0.15 * sr) {
+			iv = -1;                               // double tap: ignore
+		} else if (iv > 2 * sr) {
+			t_count = 0;                           // too long: restart
+			last_tap = t;
+		} else {
+			if (t_count > 0) {
+				tavg0 = (ti0 + ti1 + ti2 + ti3) / min(t_count, 4);
+				if (abs(iv - tavg0) > 0.4 * tavg0) {
+					t_count = 0;                   // outlier: new sequence
+				}
+			}
+			ti3 = ti2;
+			ti2 = ti1;
+			ti1 = ti0;
+			ti0 = iv;
+			if (t_count == 0) {
+				ti1 = 0;
+				ti2 = 0;
+				ti3 = 0;
+			}
+			t_count = min(t_count + 1, 4);
+			tavg = (ti0 + ti1 + ti2 + ti3) / t_count;
+			tap_bpm = 60 * sr / tavg;
+			last_tap = t;
+		}
+	} else {
+		last_tap = t;
+	}
+}
+tap_prev = tap;
+
+// ================= TARGET DELAY TIME ==================================
+T = manual_ms * 0.001;
+if (slider_taper > 0.5) {
+	s_lo = min(slider_min_ms, slider_max_ms);
+	s_hi = max(slider_min_ms, slider_max_ms);
+	T = (s_lo + slider_pos * (s_hi - s_lo)) * 0.001;
+}
+if (mode < 1.5) {
+	use_bpm = max(bpm, 20);
+	dv_idx = floor(sync_div + 0.5);
+	typ = floor(sync_type + 0.5);
+	if (mode >= 0.5) {
+		use_bpm = tap_bpm;
+		dv_idx = floor(tap_div + 0.5);
+		typ = floor(tap_type + 0.5);
+	}
+	beats = 0.125;
+	if (dv_idx == 1) { beats = 0.25; }
+	else if (dv_idx == 2) { beats = 0.5; }
+	else if (dv_idx == 3) { beats = 1; }
+	else if (dv_idx == 4) { beats = 2; }
+	else if (dv_idx >= 5) { beats = bar_beats; }
+	if (typ == 1) { beats = beats * 1.5; }
+	else if (typ == 2) { beats = beats * 2 / 3; }
+	T = 60 / use_bpm * beats * max(sync_mult, 1) + offset_ms * 0.001;
+}
+T = clamp(T, 0.002, 4);
+
+// sample-rate-dependent constants
+if (sr != ck_sr) {
+	ck_wow = 1 - exp(-twopi * 0.5 / sr);
+	ck_fl = 1 - exp(-twopi * 20 / sr);
+	ck_a10 = 1 - exp(-1 / (0.010 * sr));
+	a_n0 = 1 - exp(-twopi * min(10000, 0.49 * sr) / sr);
+	ck_nnorm = sqrt((1 / 3) * a_n0 / (2 - a_n0));
+	ck_att = 1 - exp(-1 / (0.002 * sr));
+	ck_rel = 1 - exp(-1 / (0.086 * sr));
+	ck_up = 1 - exp(-1 / (0.001 * sr));
+	ck_dn = 1 - exp(-1 / (0.200 * sr));
+	ck_prel = 1 - exp(-1 / (0.150 * sr));
+	ck_patt = 1 - exp(-1 / (0.0005 * sr));
+	ck_ps = 1 - exp(-1 / (0.010 * sr));      // 10 ms parameter smoothing
+	ck_sr = sr;
+	ck_tau = -1;
+	ck_nkey = -99999;
+}
+
+// smoothed continuous parameters (used everywhere below)
+sm_in_gain_db = psmooth(in_gain_db, ck_ps);
+sm_dry = psmooth(dry, ck_ps);
+sm_echo = psmooth(echo, ck_ps);
+sm_out_db = psmooth(out_db, ck_ps);
+sm_feedback = psmooth(feedback, ck_ps);
+sm_bass_db = psmooth(bass_db, ck_ps);
+sm_treble_db = psmooth(treble_db, ck_ps);
+sm_sat = psmooth(sat, ck_ps);
+sm_noise_db = psmooth(noise_db, ck_ps);
+sm_wow = psmooth(wow, ck_ps);
+sm_flutter = psmooth(flutter, ck_ps);
+sm_hold_fb = psmooth(hold_fb, ck_ps);
+sm_drive_db = psmooth(drive_db, ck_ps);
+sm_fb_res = psmooth(fb_res, ck_ps);
+sm_head_spacing_ms = psmooth(head_spacing_ms, ck_ps);
+sm_dry_treble_db = psmooth(dry_treble_db, ck_ps);
+sm_splice = psmooth(splice, ck_ps);
+sm_dry_mono = psmooth(dry_mono, ck_ps);     // 10 ms crossfade stereo <-> mono dry
+// ceiling_db is NOT smoothed: the protection stage smooths its own gain, and a
+// lagging ceiling would let output exceed a newly lowered ceiling (test P05)
+sm_fb_hp_hz = fsmooth(fb_hp_hz, ck_ps);
+sm_fb_lp_hz = fsmooth(fb_lp_hz, ck_ps);
+sm_echo_hp_hz = fsmooth(echo_hp_hz, ck_ps);
+sm_echo_lp_hz = fsmooth(echo_lp_hz, ck_ps);
+
+if (mode != prev_mode) {
+	if (prev_mode >= 0) {
+		trans_left = transition_ms * 0.001 * sr * 3;
+	}
+	prev_mode = mode;
+}
+tau_ms = glide_ms;
+if (trans_left > 0) {
+	tau_ms = max(transition_ms, glide_ms);
+	trans_left = trans_left - 1;
+}
+if (tau_ms != ck_tau) {
+	ck_as = 1 - exp(-1 / (max(tau_ms, 0.5) * 0.001 * sr));
+	ck_tau = tau_ms;
+}
+a_s = ck_as;
+Ts = T * sr;
+if (Ts1 < 0) {
+	Ts1 = Ts;
+	Ts2 = Ts;
+}
+Ts1 = Ts1 + a_s * (Ts - Ts1);
+Ts2 = Ts2 + a_s * (Ts1 - Ts2);                     // 2-pole: continuous pitch
+
+// ================= TRANSPORT ==========================================
+if (tape_stop > 0.5) {
+	s_stop = max(0, s_stop - 1 / (max(stop_time, 0.02) * sr));
+} else {
+	s_stop = min(1, s_stop + 1 / (max(start_time, 0.02) * sr));
+}
+
+loop_cells = ((loop_type > 0.5) ? (3.0 / 0.305) : (0.65 / 0.305)) * sr;
+wow_ph = wow_ph + 0.7 / sr;
+wow_ph = wow_ph - floor(wow_ph);
+fl_ph = fl_ph + 8.5 / sr;
+fl_ph = fl_ph - floor(fl_ph);
+fl2_ph = fl2_ph + 17.3 / sr;
+fl2_ph = fl2_ph - floor(fl2_ph);
+wow_rnd = wow_rnd + ck_wow * (noise() * 3 - wow_rnd);
+fl_rnd = fl_rnd + ck_fl * (noise() * 2 - fl_rnd);
+loop_ph = loop_pos / loop_cells;
+wf = sm_wow * 0.006 * (0.7 * sin(twopi * wow_ph) + 0.3 * wow_rnd)
+   + sm_flutter * 0.002 * (0.5 * sin(twopi * fl_ph) + 0.2 * sin(twopi * fl2_ph) + 0.3 * fl_rnd)
+   + sm_flutter * 0.0005 * sin(twopi * loop_ph);     // loop-synchronous tension variation
+
+v_base = 1;
+d = Ts2;
+if (slider_mode < 0.5) {
+	// SLIDING REPLAY HEAD (M107) — head-speed limit |dd/dt| <= head_slew
+	if (d_head < 0) {
+		d_head = Ts2;
+	}
+	hs = max(head_slew, 0.05);
+	d_head = d_head + clamp(Ts2 - d_head, -hs, hs);
+	d = d_head;
+} else {
+	// VARIABLE SPEED (option) — fixed head spacing, speed follows target
+	d = sm_head_spacing_ms * 0.001 * sr;
+	d_head = Ts2;
+	v_base = clamp(d / Ts2, 0.05, 4);
+}
+d = clamp(d, 8, N - 16);
+v_eff = clamp(v_base * s_stop * (1 + wf), 0, 4);
+
+p_new = p + v_eff;
+rdp = p_new - d;
+rho = rdp - r_prev;
+if (first > 0.5) {
+	rho = 1;
+	first = 0;
+}
+w_box = clamp(abs(rho) - 1, 0, 1);
+r_a = r_prev;
+r_prev = rdp;
+
+// sm_splice: a fixed point on the loop passing the replay head
+sp_pos = wrap(loop_pos + v_eff - d, 0, loop_cells);
+sp_w = 0.004 * sr;
+sp_g = 1;
+if (sp_pos < sp_w) {
+	sp_g = 1 - sm_splice * 0.7 * 0.5 * (1 - cos(twopi * sp_pos / sp_w));
+}
+loop_pos = wrap(loop_pos + v_eff, 0, loop_cells);
+
+// ================= gates & per-sample coefficients ====================
+a10 = ck_a10;
+hold_s = hold_s + a10 * (hold - hold_s);
+drive_s = drive_s + a10 * (drive - drive_s);
+dkey = drive_s * sm_drive_db;
+if (dkey != ck_dkey) {
+	ck_dg = pow(10, drive_s * sm_drive_db / 20);
+	ck_dkey = dkey;
+}
+drive_gain = ck_dg;
+if (sm_sat != ck_sat) {
+	ck_gt = 2.12 * pow(4, 2 * (sm_sat - 0.5));
+	ck_sat = sm_sat;
+}
+g_t = ck_gt;
+gp = min(1, v_eff / 0.15) * sp_g;
+fc_rec = min(18000, 0.42 * v_eff * sr);
+fc_tape = clamp(7782 * v_eff, 50, 0.45 * sr);
+fb_amt = sm_feedback * (1 - hold_s) + sm_hold_fb * hold_s;
+q_fb = 0.707 + sm_fb_res * 6;
+if (sm_in_gain_db != ck_ing) {
+	ck_ig = pow(10, sm_in_gain_db / 20);
+	ck_ing = sm_in_gain_db;
+}
+in_g = ck_ig;
+if (sm_noise_db != ck_nkey) {
+	ck_ng = (sm_noise_db > -119) ? pow(10, sm_noise_db / 20) / ck_nnorm : 0;
+	ck_nkey = sm_noise_db;
+}
+noise_g = ck_ng;
+dfb_g = (drive_fb > 0.5) ? drive_gain : 1;
+a_att = ck_att;
+a_rel = ck_rel;
+
+xin0 = xl;
+xin1 = xr;
+if (stereo < 0.5) {
+	xin0 = 0.5 * (xl + xr);
+	xin1 = xin0;
+}
+
+guard = 1;
+if (env > 1.5) {
+	guard = 1.5 / env;
+}
+
+// ================= REPLAY HEAD READ ===================================
+ri = floor(rdp);
+rf = rdp - ri;
+i0 = wrap(ri, 0, N);
+im1 = wrap(i0 - 1, 0, N);
+ip1 = wrap(i0 + 1, 0, N);
+ip2 = wrap(i0 + 2, 0, N);
+// peek() returns (value, index); take only the value into named variables
+m0 = peek(tape, im1, 0);
+c0 = peek(tape, i0, 0);
+n0 = peek(tape, ip1, 0);
+q0 = peek(tape, ip2, 0);
+m1 = peek(tape, im1, 1);
+c1 = peek(tape, i0, 1);
+n1 = peek(tape, ip1, 1);
+q1 = peek(tape, ip2, 1);
+yr0 = hermite(m0, c0, n0, q0, rf);
+yr1 = hermite(m1, c1, n1, q1, rf);
+if (w_box > 0) {
+	// box-integrated read (anti-alias when the head moves faster than 1x):
+	// mean of the zero-order-hold track over [lo, hi]; cell j spans (j-1, j].
+	// Summed directly (<= ~10 cells) — no running-integral state.
+	lo = min(r_a, rdp);
+	hi = max(r_a, rdp);
+	ilo = floor(lo);
+	flo = lo - ilo;
+	ihi = floor(hi);
+	fhi = hi - ihi;
+	bs0 = 0;
+	bs1 = 0;
+	for (j = ilo + 1; j <= ihi; j += 1) {
+		jj = wrap(j, 0, N);
+		bv0 = peek(tape, jj, 0);
+		bv1 = peek(tape, jj, 1);
+		bs0 = bs0 + bv0;
+		bs1 = bs1 + bv1;
+	}
+	jh = wrap(ihi + 1, 0, N);
+	jl = wrap(ilo + 1, 0, N);
+	th0 = peek(tape, jh, 0);
+	th1 = peek(tape, jh, 1);
+	tl0 = peek(tape, jl, 0);
+	tl1 = peek(tape, jl, 1);
+	span = max(hi - lo, 0.000001);
+	box0 = (bs0 + fhi * th0 - flo * tl0) / span;
+	box1 = (bs1 + fhi * th1 - flo * tl1) / span;
+	yr0 = yr0 + w_box * (box0 - yr0);
+	yr1 = yr1 + w_box * (box1 - yr1);
+}
+
+// ================= TRACK PROCESSING ===================================
+xdl = xl;
+xdr = xr;
+if (sm_dry_mono > 0) {
+	xdm = 0.5 * (xl + xr);
+	xdl = (sm_dry_mono >= 1) ? xdm : xl + sm_dry_mono * (xdm - xl);
+	xdr = (sm_dry_mono >= 1) ? xdm : xr + sm_dry_mono * (xdm - xr);
+}
+rec0, ech0, dry0, fa0, gl0 = chan(yr0, xin0, xdl, gp, fc_tape, sm_fb_hp_hz, sm_fb_lp_hz, q_fb, fb_amt,
+                                  guard, dfb_g, in_g, drive_gain, hold_s, noise_g, g_t, fc_rec,
+                                  sm_bass_db, sm_treble_db, sm_dry_treble_db, sm_echo_hp_hz, sm_echo_lp_hz,
+                                  limiter, a_att, a_rel);
+rec1, ech1, dry1, fa1, gl1 = chan(yr1, xin1, xdr, gp, fc_tape, sm_fb_hp_hz, sm_fb_lp_hz, q_fb, fb_amt,
+                                  guard, dfb_g, in_g, drive_gain, hold_s, noise_g, g_t, fc_rec,
+                                  sm_bass_db, sm_treble_db, sm_dry_treble_db, sm_echo_hp_hz, sm_echo_lp_hz,
+                                  limiter, a_att, a_rel);
+if (stereo < 0.5) {
+	rec1 = rec0;
+	ech1 = ech0;
+}
+rec0 = fixnan(rec0);
+rec1 = fixnan(rec1);
+
+fbmax = max(fa0, fa1);
+a_up = ck_up;
+a_dn = ck_dn;
+env = fixdenorm(env + ((fbmax > env) ? a_up : a_dn) * (fbmax - env));
+
+// ================= RECORD HEAD: write every cell crossed ==============
+if (v_eff > 0) {
+	for (k0 = floor(p) + 1; k0 <= p_new; k0 += 1) {
+		fq = (k0 - p) / v_eff;
+		ki = wrap(k0, 0, N);
+		w0 = rec_p0 + fq * (rec0 - rec_p0);
+		w1 = rec_p1 + fq * (rec1 - rec_p1);
+		poke(tape, w0, ki, 0);
+		poke(tape, w1, ki, 1);
+	}
+}
+rec_p0 = rec0;
+rec_p1 = rec1;
+p = p_new;
+if (p >= N) {
+	p = p - N;
+	r_prev = r_prev - N;
+}
+
+if (sm_out_db != ck_okey) {
+	ck_og = pow(10, sm_out_db / 20);
+	ck_okey = sm_out_db;
+}
+og = ck_og;
+o1 = fixnan((dry0 * sm_dry + ech0 * sm_echo) * og);
+o2 = fixnan((dry1 * sm_dry + ech1 * sm_echo) * og);
+
+// ================= OUTPUT PROTECTION (after sm_dry/wet sum) ==============
+// Zero-latency, stereo-linked peak limiter (instant requirement capture,
+// 10 ms hold, 0.5 ms gain attack, 150 ms release) into a soft clip that
+// only acts between the limiter threshold (ceiling - 0.5 dB) and the
+// ceiling. Below threshold the signal passes bit-exact. Sample-peak only.
+if (ceiling_db != ck_ckey) {
+	ck_cl = pow(10, ceiling_db / 20);
+	ck_ckey = ceiling_db;
+}
+c_lin = ck_cl;
+thr = c_lin * 0.944061;
+pk = max(abs(o1), abs(o2));
+over = (pk > thr) ? 1 : 0;
+pg = 1;
+if (protect > 0.5) {
+	greq = (pk > thr) ? thr / pk : 1;
+	if (greq < pg_hold) {
+		pg_hold = greq;
+		ph_cnt = 0.010 * sr;
+	} else if (ph_cnt > 0) {
+		ph_cnt = ph_cnt - 1;
+	} else {
+		pg_hold = pg_hold + ck_prel * (1 - pg_hold);
+	}
+	if (pg_hold < pg_s) {
+		pg_s = pg_s + ck_patt * (pg_hold - pg_s);
+	} else {
+		pg_s = pg_hold;
+	}
+	pg = pg_s;
+	o1 = softclip(o1 * pg, thr, c_lin);
+	o2 = softclip(o2 * pg, thr, c_lin);
+} else {
+	pg_hold = 1;
+	pg_s = 1;
+	ph_cnt = 0;
+}
+
+out1 = o1;
+out2 = o2;
+out3 = (d / max(v_eff, 0.000000001)) / sr * 1000;
+out4 = tap_bpm;
+out5 = gl0;
+out6 = rho;
+out7 = pg;
+out8 = over;

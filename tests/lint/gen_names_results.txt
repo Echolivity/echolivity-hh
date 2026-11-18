@@ -1,0 +1,8 @@
+== dsp/hh_core.genexpr: 6 finding(s)
+  MEDIUM s            History declared with a built-in name
+  LOW    f            function argument with an operator name (in hermite)
+  LOW    r            local variable with an operator name
+  LOW    f            function argument with an operator name (in fsmooth)
+  LOW    f            local variable with an operator name
+  LOW    s            local variable with an operator name
+== tests/golden/fallback/hh_core_fallback.genexpr: 0 finding(s)

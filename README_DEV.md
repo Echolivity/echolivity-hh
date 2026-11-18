@@ -27,7 +27,7 @@ Status: structurally checked (connections, object names against Ableton's `maxde
 | 96 kHz, worst case | 9.3 % | 5.1 % |
 
 - Full table in `tests/genexpr_sim/CPU_PROXY_REPORT.md`.
-- `devices/Echolivity_HH_v0.2.2-dev.amxd/.maxpat` are built from it. For later — not for the v0.2.1 tests.
+- `devices/Echolivity_HH_v0.2.3-dev.amxd/.maxpat` are built from it. For later — not for the v0.2.1 tests.
 - Same Max/Live caveats as v0.2.1. Continuously automated parameters recompute every sample, the same cost as v0.2.1.
 
 ## 3. Phase 1 remaining stages — reference prototypes
@@ -99,3 +99,7 @@ Both are original artwork: no HH logo, legend text or panel graphics are copied.
 - `build_device.py` builds the layout once per palette and checks that only colours differ. It turns the differences into `script sendbox` messages to `thispatcher`: 405 colour changes on 102 objects. The stored theme is re-applied on load (`live.thisdevice`).
 - To build a device that *opens* in EL, use `HH_PALETTE=el python3 build/build_device.py`.
 - Tests: `tests/test_ui_theme.py` (TH01–TH04, structural; see `tests/UI_THEME_REPORT.md`). That Max actually redraws the colours is test L25, which can't be run here.
+
+
+## If gen~ reports an error on `s`, `f` or `r` (G01)
+Open `tests/golden/fallback/HH_golden_harness_FALLBACK_NAMES.maxpat` instead: the same engine with those local names changed, proven bit-identical (`identity_rename_check.txt`). Report which harness compiled.
