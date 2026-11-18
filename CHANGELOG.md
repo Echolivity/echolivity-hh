@@ -1,6 +1,7 @@
 # Changelog
 
 ## Repository front page (2026-11-18) — no change to the device or the DSP
+- Second pass: the page is laid out as a technical sheet: an engineering-drawing banner (`docs/images/hh_banner.png`), a specification table tagged M107 / CCT / DEV, and a signal-path figure traced from the M107 notes (`docs/images/hh_signal_path.png`). HTML sources are in `docs/images/src/`. Numbered sections from Description to Known faults.
 - New README in the Echolivity collection style (machine overview, install, performance panel, themes, validation status, known limitations, authenticity); panel images in `docs/images/` rendered from the v0.2.3-dev device (approximate).
 
 ## v0.2.3-dev (2026-11-18) — gen~ reserved-name fix

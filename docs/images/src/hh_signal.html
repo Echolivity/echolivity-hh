@@ -1,0 +1,82 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:Michroma;src:url(node_modules/@fontsource/michroma/files/michroma-latin-400-normal.woff2)}
+@font-face{font-family:Plex;font-weight:500;src:url(node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2)}
+*{margin:0;padding:0}
+body{width:1600px;height:700px;overflow:hidden;background:#070909}
+.wrap{position:relative;width:1600px;height:700px;background:
+  linear-gradient(rgba(111,240,180,.05) 1px,transparent 1px) 0 0/40px 40px,
+  linear-gradient(90deg,rgba(111,240,180,.05) 1px,transparent 1px) 0 0/40px 40px,#070909}
+svg{position:absolute;inset:0}
+.b{fill:#0b1412;stroke:#79e8bd;stroke-width:1.6}
+.bh{fill:#0e1f1a;stroke:#bdf7dc;stroke-width:2.2}
+.w{stroke:#79e8bd;stroke-width:1.8;fill:none}
+.wd{stroke:#79e8bd;stroke-width:1.4;fill:none;stroke-dasharray:6 5;opacity:.8}
+.n{font:400 13px Michroma;letter-spacing:.12em;fill:#bdf7dc}
+.r{font:500 12px Plex;letter-spacing:.08em;fill:#7fb39c}
+.lab{font:500 13px Plex;letter-spacing:.14em;fill:#9fdcc2}
+.hd{font:400 18px Michroma;letter-spacing:.3em;fill:#79e8bd}
+</style></head><body><div class="wrap">
+<svg viewBox="0 0 1600 700">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#79e8bd"/></marker></defs>
+<text x="40" y="44" class="hd">SIGNAL PATH</text>
+<text x="1560" y="44" text-anchor="end" class="r">AFTER M107 · DRAWING C/AC20000 ISSUE 7 · SIMPLIFIED</text>
+<line x1="40" y1="60" x2="1560" y2="60" stroke="#79e8bd" stroke-opacity=".35"/>
+
+<!-- row labels -->
+<text x="40" y="96" class="lab">DRY</text><text x="40" y="266" class="lab">RECORD</text><text x="40" y="436" class="lab">REPLAY</text><text x="40" y="566" class="lab">REPEAT</text>
+
+<!-- ROW 1: dry -->
+<rect x="40"  y="110" width="120" height="60" class="b"/><text x="100" y="138" text-anchor="middle" class="n">IN</text><text x="100" y="156" text-anchor="middle" class="r">CH1 · CH2</text>
+<rect x="200" y="110" width="150" height="60" class="b"/><text x="275" y="138" text-anchor="middle" class="n">INPUT AMP</text><text x="275" y="156" text-anchor="middle" class="r">IC5 · IC4</text>
+<rect x="390" y="110" width="150" height="60" class="b"/><text x="465" y="138" text-anchor="middle" class="n">VOLUME</text><text x="465" y="156" text-anchor="middle" class="r">5K LOG</text>
+<rect x="600" y="110" width="150" height="60" class="b"/><text x="675" y="138" text-anchor="middle" class="n">SUM</text><text x="675" y="156" text-anchor="middle" class="r">IC6</text>
+<rect x="800" y="110" width="170" height="60" class="b"/><text x="885" y="138" text-anchor="middle" class="n">DRY TREBLE</text><text x="885" y="156" text-anchor="middle" class="r">IC7 · ±16 DB</text>
+<rect x="1390" y="110" width="170" height="60" class="bh"/><text x="1475" y="138" text-anchor="middle" class="n">OUTPUT MIX</text><text x="1475" y="156" text-anchor="middle" class="r">IC3</text>
+<path d="M160 140 H198" class="w" marker-end="url(#a)"/><path d="M350 140 H388" class="w" marker-end="url(#a)"/>
+<path d="M540 140 H598" class="w" marker-end="url(#a)"/><path d="M750 140 H798" class="w" marker-end="url(#a)"/>
+<path d="M970 140 H1388" class="w" marker-end="url(#a)"/>
+<path d="M1475 110 V76" class="w" marker-end="url(#a)"/><text x="1490" y="90" class="n">OUT</text>
+
+<!-- ROW 2: record -->
+<path d="M570 140 V200 H510 V250" class="w" marker-end="url(#a)"/><circle cx="570" cy="140" r="4" fill="#79e8bd"/>
+<rect x="470" y="252" width="80" height="56" class="b"/><text x="510" y="278" text-anchor="middle" class="n">ECHO</text><text x="510" y="296" text-anchor="middle" class="r">ON</text>
+<path d="M550 280 H600" class="w" marker-end="url(#a)"/>
+<circle cx="620" cy="280" r="18" class="bh"/><text x="620" y="285" text-anchor="middle" class="r" style="fill:#bdf7dc">Σ</text>
+<text x="632" y="326" class="r">RECORD NODE</text>
+<rect x="680" y="250" width="170" height="60" class="b"/><text x="765" y="276" text-anchor="middle" class="n">LIMITER</text><text x="765" y="294" text-anchor="middle" class="r">IC8 · Q3 SHUNT</text>
+<rect x="890" y="250" width="190" height="60" class="b"/><text x="985" y="276" text-anchor="middle" class="n">RECORD AMP</text><text x="985" y="294" text-anchor="middle" class="r">IC9 · PRE-EMPHASIS</text>
+<rect x="1120" y="250" width="110" height="60" class="bh"/><text x="1175" y="276" text-anchor="middle" class="n">REC</text><text x="1175" y="294" text-anchor="middle" class="r">FIXED HEAD</text>
+<rect x="1310" y="250" width="130" height="60" class="bh"/><text x="1375" y="276" text-anchor="middle" class="n">REPLAY</text><text x="1375" y="294" text-anchor="middle" class="r">SLIDING HEAD</text>
+<path d="M638 280 H678" class="w" marker-end="url(#a)"/><path d="M850 280 H888" class="w" marker-end="url(#a)"/><path d="M1080 280 H1118" class="w" marker-end="url(#a)"/>
+<path d="M1230 280 H1308" class="w" marker-end="url(#a)" stroke-width="3"/><text x="1270" y="268" text-anchor="middle" class="r">TAPE</text><text x="1270" y="302" text-anchor="middle" class="r">12 IN/S</text>
+<path d="M985 310 V346 H765 V312" class="wd" marker-end="url(#a)"/><text x="875" y="364" text-anchor="middle" class="r">DETECTOR D2 → Q3</text>
+<!-- rear echo send -->
+<rect x="200" y="330" width="230" height="50" class="b"/><text x="315" y="354" text-anchor="middle" class="n">ECHO SEND</text><text x="315" y="370" text-anchor="middle" class="r">REAR INPUT</text>
+<path d="M430 355 H620" class="w"/><circle cx="620" cy="355" r="4" fill="#79e8bd"/>
+
+<!-- ROW 3: replay -->
+<path d="M1375 310 V418" class="w" marker-end="url(#a)"/>
+<rect x="1290" y="420" width="170" height="60" class="b"/><text x="1375" y="446" text-anchor="middle" class="n">PREAMP + EQ</text><text x="1375" y="464" text-anchor="middle" class="r">Q1 · Q2 · IC1</text>
+
+<rect x="1400" y="380" width="0" height="0"/>
+<rect x="1395" y="330" width="160" height="0" />
+<!-- tone + echo volume stack (right column) -->
+<rect x="1480" y="330" width="1" height="1" fill="none"/>
+<path d="M1460 450 H1489 V418" class="w" marker-end="url(#a)"/>
+<rect x="1418" y="340" width="142" height="76" class="b"/><text x="1489" y="366" text-anchor="middle" class="n">BASS ·</text><text x="1489" y="384" text-anchor="middle" class="n">TREBLE</text><text x="1489" y="404" text-anchor="middle" class="r">IC2 BAXANDALL</text>
+<rect x="1418" y="196" width="142" height="40" class="b"/><text x="1489" y="221" text-anchor="middle" class="n">ECHO VOL</text>
+<path d="M1489 340 V238" class="w" marker-end="url(#a)"/>
+<path d="M1489 196 V172" class="w" marker-end="url(#a)"/>
+
+<!-- repeat loop: pre-tone -->
+<circle cx="1320" cy="480" r="0"/>
+<path d="M1320 480 V570 H860" class="w" marker-end="url(#a)"/><circle cx="1320" cy="480" r="4" fill="#79e8bd"/>
+<rect x="690" y="540" width="170" height="60" class="bh"/><text x="775" y="566" text-anchor="middle" class="n">ECHO REPEAT</text><text x="775" y="584" text-anchor="middle" class="r">1K LIN</text>
+<path d="M690 570 H620 V300" class="w" marker-end="url(#a)"/>
+<text x="1090" y="596" text-anchor="middle" class="r">THE REPEAT IS TAKEN BEFORE THE TONE CONTROLS</text>
+
+<line x1="40" y1="640" x2="1560" y2="640" stroke="#79e8bd" stroke-opacity=".35"/>
+<text x="40" y="668" class="r">SIMPLIFIED FROM THE PROJECT'S M107 NOTES (docs/HH_MODELING_NOTES.md §2). COMPONENT DETAIL, BIAS AND POWER OMITTED.</text>
+</svg></div></body></html>
