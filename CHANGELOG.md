@@ -1,5 +1,11 @@
 # Changelog
 
+## Hardware panel (branch `hw-panel`, 2026-11-26) — no change to the DSP or the parameters
+- Echolivity hardware-replica look: one rendered faceplate per theme (brushed finish, section plates, accent bars painted in) and image knobs (black, spun-aluminium caps) under every dial; the dials' own arcs are transparent, names and values stay and still follow the theme. The THEME switch also swaps the faceplate image (`script sendbox hh_faceplate pic …`).
+- Images `devices/hh_*.png` (1x and @2x), rendered by `build/render_panel.py` with the shared `build/hwpanel.py`. **Keep them next to the .amxd** (or Freeze the device in Max); a fallback note shows if they're missing.
+- Unchanged: all 54 parameters (names, ranges, defaults), patch cords to gen~, gen~ code. Tests: UI theme 4/4 (TH01/TH04 accept the faceplate image switch), hardware slider 6/6, dry mono 4/4, reference 37/38 (R01 needs the frozen v0.2.0 engine, absent in this environment; same on main).
+- Max 9 / Live 12: not run.
+
 ## Repository front page (2026-11-18) — no change to the device or the DSP
 - Second pass: the page is laid out as a technical sheet: an engineering-drawing banner (`docs/images/hh_banner.png`), a specification table tagged M107 / CCT / DEV, and a signal-path figure traced from the M107 notes (`docs/images/hh_signal_path.png`). HTML sources are in `docs/images/src/`. Numbered sections from Description to Known faults.
 - New README in the Echolivity collection style (machine overview, install, performance panel, themes, validation status, known limitations, authenticity); panel images in `docs/images/` rendered from the v0.2.3-dev device (approximate).
